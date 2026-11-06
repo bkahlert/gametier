@@ -18,8 +18,8 @@ Windows builds need permission to create symbolic links.
 Generate one root key with `conveyor keys generate --no-passphrase --no-keyring`.
 Back up the `app.signing-key` value from Conveyor's `defaults.conf` outside the
 repository. Set the GitHub Actions secret `CONVEYOR_SIGNING_KEY` to that value.
-Keep the same key for all releases: replacing it changes the Windows package
-identity. No Conveyor account or purchased certificate is required.
+Keep the same key for all releases: existing installations trust its certificate.
+No Conveyor account or purchased certificate is required.
 
 Local builds use Conveyor's existing key. The release workflow requires the
 secret explicitly and fails if it is absent. Pull-request CI generates a

@@ -169,9 +169,7 @@ function Stop-PackageFixture($Running) {
 
 function Start-InstalledApplication($Registration, [string] $Phase) {
     $launcher = Join-Path $Registration.Package.InstallLocation 'bin/GameTier.exe'
-    $process = Start-Process -FilePath $launcher -WorkingDirectory $fixture -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $fixture "$Phase-launcher.stdout.log") `
-        -RedirectStandardError (Join-Path $fixture "$Phase-launcher.stderr.log")
+    $process = Start-Process -FilePath $launcher -WorkingDirectory $fixture -WindowStyle Hidden -Verb RunAs -PassThru
     try {
         if (-not $process.WaitForInputIdle(60000)) { throw "Installed $Phase application did not become idle within 60 seconds." }
         $process.Refresh()
