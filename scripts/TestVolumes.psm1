@@ -14,6 +14,26 @@ function Invoke-ElevatedVolumeHelper([string] $Action, [string] $FixtureDirector
 }
 
 function Invoke-WithTestVolumes {
+    <#
+    .SYNOPSIS
+    Runs an action with disposable NTFS/ReFS fixtures or four existing volumes.
+    .DESCRIPTION
+    Sets GAMETIER_TEST_VOLUMES for the action and restores its previous value
+    afterward. Disposable fixtures are cleaned up even if the action fails.
+    See Get-Help .\scripts\Test-Filesystems.ps1 -Full for storage prerequisites
+    and UAC requirements.
+    .PARAMETER ExistingVolumes
+    Four writable roots ordered NTFS1, NTFS2, ReFS1, ReFS2; omitting this provisions
+    disposable VHDX fixtures instead.
+    .PARAMETER Action
+    The test command or other work to perform while the fixtures are available.
+    .EXAMPLE
+    Import-Module .\scripts\TestVolumes.psm1
+    Invoke-WithTestVolumes -Action { .\kotlin.bat test -m shared }
+    Runs shared tests with automatic fixture setup and cleanup. Symlink tests
+    still depend on the calling process's privileges; use Test-Filesystems.ps1
+    for the complete workflow with a separate elevated symlink phase.
+    #>
     [CmdletBinding()]
     param(
         [string[]] $ExistingVolumes,
