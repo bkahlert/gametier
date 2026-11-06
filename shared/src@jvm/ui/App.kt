@@ -35,12 +35,13 @@ fun App(
     GameTierTheme {
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
+                val activityHeight = (maxHeight * 0.25f).coerceAtMost(200.dp)
                 Column(Modifier.fillMaxSize()) {
                     when (state.screen) {
                         AppScreen.PROMOTIONS -> PromotionScreen(state, controller, onChooseFiles, onChooseFolders, showDetails, Modifier.weight(1f))
                         AppScreen.SETTINGS -> SettingsScreen(state, controller, onChooseDefaultDirectory, showDetails, Modifier.weight(1f))
                     }
-                    ActivityPanel(state, controller, showDetails, maxContentHeight = (maxHeight * 0.25f).coerceAtMost(200.dp))
+                    ActivityPanel(state, controller, showDetails, maxContentHeight = activityHeight)
                 }
                 if (isDragging) Surface(Modifier.fillMaxSize().padding(10.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.97f),

@@ -54,8 +54,8 @@ internal fun ReviewDialog(state: AppState, controller: AppController, onChooseDi
         Text(if (state.defaultDirectory == null) "Choose your first promotion folder. It becomes the default for future additions."
             else "Applies to this addition. Your saved default stays unchanged.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        state.settingsError?.let { error -> Notice("The folder could not be saved", error.message ?: "Choose the folder again after resolving the problem.",
-            { onDetails("Default folder could not be saved", errorDetails(error)) }) }
+        state.settingsError?.let { error -> Notice("Settings need attention", error.message ?: "The settings could not be read or saved.",
+            { onDetails("Settings need attention", errorDetails(error)) }) }
         if (state.preparing || state.savingSettings) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(if (state.savingSettings) "Saving the first promotion folder…" else "Checking your selection…", style = MaterialTheme.typography.bodySmall)
