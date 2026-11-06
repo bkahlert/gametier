@@ -33,15 +33,14 @@ class AdministratorRestart internal constructor(
         launch = { executable, arguments, directory, _ -> WindowsElevation().launch(executable, arguments, directory) },
     )
 
-    fun restart(request: TransferRequest) {
-        require(request.kind == TransferKind.PROMOTE) { "Only an unstarted promotion can be reopened" }
+    fun restart(requests: List<TransferRequest>) {
         var accepted = false
         try { ServerSocket(0, 1, loopback).use { server ->
             server.soTimeout = startupTimeoutMillis
             val absoluteClassPath = classPath.split(File.pathSeparator).joinToString(File.pathSeparator) {
                 workingDirectory.resolve(it).normalize().toString()
             }
-            val selection = RestartSelection(request, server.localPort, UUID.randomUUID().toString(), localAppData, absoluteClassPath)
+            val selection = RestartSelection(requests, server.localPort, UUID.randomUUID().toString(), localAppData, absoluteClassPath)
             val file = Files.createTempFile("gametier-restart-", ".jar")
             var failure: Exception? = null
             try {
@@ -71,11 +70,18 @@ class AdministratorRestart internal constructor(
     }
 }
 
-data class RestartSelection(val request: TransferRequest, val port: Int, val token: String,
+data class RestartSelection(val requests: List<TransferRequest>, val port: Int, val token: String,
     val localAppData: String? = null, val classPath: String? = null) {
-    internal fun arguments(): Array<String> = arrayOf(
-        "--resume-promotion", request.original.toString(), request.directory.toString(), "--ready", port.toString(), token,
-    )
+    init {
+        require(requests.isNotEmpty() && requests.all { it.kind == TransferKind.PROMOTE }) {
+            "Only unstarted promotions can be reopened"
+        }
+    }
+
+    internal fun arguments(): Array<String> = buildList {
+        requests.forEach { addAll(listOf("--resume-promotion", it.original.toString(), it.directory.toString())) }
+        addAll(listOf("--ready", port.toString(), token))
+    }.toTypedArray()
 
     fun acknowledge() {
         Socket().use { client ->
@@ -90,13 +96,18 @@ data class RestartSelection(val request: TransferRequest, val port: Int, val tok
         fun parse(arguments: Array<String>): RestartSelection? {
             if (arguments.isEmpty()) return null
             if (arguments.contentEquals(arrayOf("--restart"))) return readRestartJar(Path.of(System.getProperty("java.class.path")))
-            require(arguments.size == 6 && arguments[0] == "--resume-promotion" && arguments[3] == "--ready") { "Invalid restart arguments" }
-            val port = arguments[4].toIntOrNull()
-            require(port != null && port in 1..65535 && arguments[5].isNotBlank()) { "Invalid restart acknowledgement" }
-            val original = Path.of(arguments[1])
-            val directory = Path.of(arguments[2])
-            require(original.isAbsolute && directory.isAbsolute && original.fileName != null) { "Invalid restart selection" }
-            return RestartSelection(TransferRequest(TransferKind.PROMOTE, original, directory, directory.resolve(original.fileName)), port, arguments[5])
+            require(arguments.size >= 6 && arguments.size % 3 == 0 && arguments[arguments.size - 3] == "--ready") { "Invalid restart arguments" }
+            val port = arguments[arguments.size - 2].toIntOrNull()
+            val token = arguments.last()
+            require(port != null && port in 1..65535 && token.isNotBlank()) { "Invalid restart acknowledgement" }
+            val requests = arguments.dropLast(3).chunked(3).map { selection ->
+                require(selection[0] == "--resume-promotion") { "Invalid restart arguments" }
+                val original = Path.of(selection[1])
+                val directory = Path.of(selection[2])
+                require(original.isAbsolute && directory.isAbsolute && original.fileName != null) { "Invalid restart selection" }
+                TransferRequest(TransferKind.PROMOTE, original, directory, directory.resolve(original.fileName))
+            }
+            return RestartSelection(requests, port, token)
         }
     }
 }

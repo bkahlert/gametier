@@ -67,7 +67,8 @@ internal fun promotionsEmptyState(directory: Path?, total: Int, search: String, 
 internal fun reviewPresentation(review: SelectionReview): ReviewPresentation {
     val ready = review.items.count { it.status == ReviewStatus.READY }
     return ReviewPresentation(ready, review.items.count { it.status == ReviewStatus.SKIPPED },
-        review.items.count { it.status == ReviewStatus.BLOCKED }, ready > 0 && review.directory != null && review.problem == null)
+        review.items.count { it.status == ReviewStatus.BLOCKED },
+        ready > 0 && review.items.filter { it.status == ReviewStatus.READY }.all { it.destination != null } && review.problem == null)
 }
 
 internal fun activityPresentation(items: List<ActivityItem>): ActivityPresentation = ActivityPresentation(

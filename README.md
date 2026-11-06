@@ -69,7 +69,8 @@ destinations. Missing storage and inconsistent promotions remain visible.
 
 If Windows blocks link creation before a promotion starts, Activity offers
 **Allow symbolic links… → Restart as administrator**. Windows requests UAC
-consent, and the selected game and destination reopen for review. Cancelling
+consent, and all promotions blocked by symbolic-link permissions reopen for
+review with their original destinations. Cancelling
 keeps the existing window open. The elevated session retains the original user's
 settings; game data only moves after confirmation in the new window.
 

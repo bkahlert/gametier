@@ -28,10 +28,10 @@ class AppController internal constructor(
     private val operations: PromotionOperations,
     private val preparer: SelectionPreparer,
     private val io: CoroutineDispatcher,
-    private val restartAsAdministrator: (suspend (TransferRequest) -> Unit)? = null,
+    private val restartAsAdministrator: (suspend (List<TransferRequest>) -> Unit)? = null,
 ) {
     constructor(scope: CoroutineScope, settings: AppSettings, operations: PromotionOperations, preparer: SelectionPreparer,
-        restartAsAdministrator: (suspend (TransferRequest) -> Unit)? = null) :
+        restartAsAdministrator: (suspend (List<TransferRequest>) -> Unit)? = null) :
         this(scope, settings, operations, preparer, Dispatchers.IO, restartAsAdministrator)
 
     private val mutableState = MutableStateFlow(AppState(settingsLoading = true))
@@ -39,6 +39,7 @@ class AppController internal constructor(
     private var generation = 0L
     private var activePreparations = 0
     private var reviewDirectory: Path? = null
+    private var restoredDirectories: Map<Path, Path> = emptyMap()
     private var inputRevision = 0L
     private var inputDirty = false
     private var nextId = 1L
@@ -148,6 +149,7 @@ class AppController internal constructor(
 
     fun select(paths: List<Path>) = action {
         if (paths.isNotEmpty()) {
+            restoredDirectories = emptyMap()
             reviewDirectory = state.value.defaultDirectory
             pendingReviewDirectory = null
             selectionAdjustments = emptyList()
@@ -156,7 +158,18 @@ class AppController internal constructor(
         }
     }
 
+    fun restorePromotions(requests: List<TransferRequest>) = action {
+        require(requests.isNotEmpty() && requests.all { it.kind == TransferKind.PROMOTE })
+        restoredDirectories = requests.associate { it.original to it.directory }
+        reviewDirectory = null
+        pendingReviewDirectory = null
+        selectionAdjustments = emptyList()
+        edit { it.copy(pendingSelection = requests.map { request -> request.original }, screen = AppScreen.PROMOTIONS) }
+        prepare()
+    }
+
     fun setReviewDirectory(directory: Path) = action {
+        restoredDirectories = emptyMap()
         if (!defaultLoaded || !rememberedLoaded) {
             pendingReviewDirectory = directory
             return@action
@@ -183,10 +196,10 @@ class AppController internal constructor(
 
     fun confirmReview() = action {
         val review = state.value.review ?: return@action
-        val directory = review.directory ?: return@action
+        if (!reviewPresentation(review).canConfirm) return@action
         if (!defaultLoaded || !rememberedLoaded || !state.value.inventoryLoaded || state.value.preparing || review.problem != null || state.value.savingSettings) return@action
         val requests = review.items.filter { it.status == ReviewStatus.READY }.mapNotNull { item ->
-            item.destination?.let { TransferRequest(TransferKind.PROMOTE, item.original, directory, it) }
+            item.destination?.let { TransferRequest(TransferKind.PROMOTE, item.original, it.parent, it) }
         }
         clearReview()
         requests.forEach(::enqueue)
@@ -217,12 +230,14 @@ class AppController internal constructor(
     fun clearError() = action { edit { it.copy(inputError = null) } }
 
     fun canRequestLinkPermission(item: ActivityItem): Boolean = restartAsAdministrator != null &&
-        item.status == ActivityStatus.FAILED && item.request.kind == TransferKind.PROMOTE && item.error is SymlinkPreflightException
+        item.status == ActivityStatus.FAILED && item.request.kind == TransferKind.PROMOTE && item.error is SymlinkPreflightException &&
+        state.value.activity.lastOrNull { it.request.original == item.request.original }?.id == item.id
 
     fun requestLinkPermission(id: Long) = action {
         if (hasWork() || state.value.pendingSelection.isNotEmpty()) return@action
-        val item = state.value.activity.singleOrNull { it.id == id && canRequestLinkPermission(it) } ?: return@action
-        edit { it.copy(linkPermission = item.request, permissionError = null, closeWhenFinished = false) }
+        if (state.value.activity.none { it.id == id && canRequestLinkPermission(it) }) return@action
+        val requests = state.value.activity.filter(::canRequestLinkPermission).map { it.request }
+        edit { it.copy(linkPermission = requests, permissionError = null, closeWhenFinished = false) }
     }
 
     fun cancelLinkPermission() = action { edit { it.copy(linkPermission = null, permissionError = null) } }
@@ -280,6 +295,7 @@ class AppController internal constructor(
 
     private fun clearReview() {
         generation++
+        restoredDirectories = emptyMap()
         reviewDirectory = null
         pendingReviewDirectory = null
         selectionAdjustments = emptyList()
@@ -296,6 +312,7 @@ class AppController internal constructor(
         }
         val currentGeneration = ++generation
         val directory = reviewDirectory
+        val destinations = restoredDirectories
         val inventory = state.value.inventory
         val remembered = state.value.rememberedFolders
         val reserved = reservations().map { it.original to it.destination }
@@ -303,8 +320,25 @@ class AppController internal constructor(
         edit { it.copy(preparing = true, review = null, reviewError = null) }
         scope.launch {
             try {
-                val review = onIo { preparer.prepare(paths, directory, inventory, remembered, reserved) }
+                val prepared = onIo {
+                    if (destinations.isEmpty()) listOf(directory to preparer.prepare(paths, directory, inventory, remembered, reserved))
+                    else {
+                        val occupied = reserved.toMutableList()
+                        paths.map { original ->
+                            val targetDirectory = destinations.getValue(original)
+                            val review = preparer.prepare(listOf(original), targetDirectory, inventory, remembered, occupied)
+                            occupied += review.items.filter { it.status == ReviewStatus.READY }.mapNotNull { item ->
+                                item.destination?.let { item.original to it }
+                            }
+                            targetDirectory to review
+                        }
+                    }
+                }
+                val review = combineReviews(prepared.map { it.second })
                 if (currentGeneration == generation) {
+                    if (destinations.isNotEmpty()) restoredDirectories = prepared.flatMap { (targetDirectory, result) ->
+                        result.items.map { it.original to requireNotNull(targetDirectory) }
+                    }.toMap()
                     selectionAdjustments = (selectionAdjustments + review.adjustments).distinct()
                     edit { it.copy(review = review.copy(adjustments = selectionAdjustments), pendingSelection = review.items.map { item -> item.original }) }
                 }
@@ -463,6 +497,10 @@ class AppController internal constructor(
     private suspend fun resumeSelection() {
         finishSettingsRead()
         if (!defaultLoaded || !rememberedLoaded || state.value.pendingSelection.isEmpty()) return
+        if (restoredDirectories.isNotEmpty()) {
+            prepare()
+            return
+        }
         val chosen = pendingReviewDirectory
         pendingReviewDirectory = null
         if (chosen != null && state.value.defaultDirectory == null) {

@@ -17,7 +17,7 @@ class AdministratorRestartTest {
     inner class Handoff {
         @Test
         fun `on restart the exact selection is restored and temporary arguments are removed`() = withTestDirectory { root ->
-            val request = request(root)
+            val requests = listOf(request(root), request(root.resolve("second")))
             var argumentFile: Path? = null
             var resumed: RestartSelection? = null
             var acknowledgement: CompletableFuture<Void>? = null
@@ -30,12 +30,12 @@ class AdministratorRestartTest {
                 acknowledgement = CompletableFuture.runAsync { resumed!!.acknowledge() }
             }
 
-            val result = restart.restart(request)
+            val result = restart.restart(requests)
             acknowledgement!!.join()
 
             assertSoftly {
                 result shouldBe Unit
-                resumed!!.request shouldBe request
+                resumed!!.requests shouldBe requests
                 resumed!!.localAppData shouldBe root.resolve("Original user 雪").toString()
                 resumed!!.classPath shouldBe listOf(root.resolve("classes"), root.resolve("library with spaces.jar")).joinToString(java.io.File.pathSeparator)
                 Files.exists(argumentFile!!) shouldBe false
@@ -48,7 +48,7 @@ class AdministratorRestartTest {
             val restart = AdministratorRestart(root.resolve("javaw.exe"), "classes", root,
                 startupTimeoutMillis = 1) { _, launchFile, _, _ -> file = launchFile }
 
-            val result = shouldThrow<IOException> { restart.restart(request(root)) }
+            val result = shouldThrow<IOException> { restart.restart(listOf(request(root))) }
 
             assertSoftly {
                 result.message.orEmpty() shouldContain "new GameTier window"
@@ -63,7 +63,7 @@ class AdministratorRestartTest {
             val restart = AdministratorRestart(root.resolve("javaw.exe"), "classes", root,
                 removeLaunchFile = { throw IOException("File in use") }) { _, launchFile, _, _ -> file = launchFile; throw denied }
 
-            val result = shouldThrow<IOException> { restart.restart(request(root)) }
+            val result = shouldThrow<IOException> { restart.restart(listOf(request(root))) }
 
             assertSoftly {
                 result shouldBe denied
@@ -82,7 +82,7 @@ class AdministratorRestartTest {
                 acknowledgement = CompletableFuture.runAsync { selection.acknowledge() }
             }
 
-            val result = restart.restart(request(root))
+            val result = restart.restart(listOf(request(root)))
             acknowledgement!!.join()
 
             result shouldBe Unit
@@ -97,7 +97,7 @@ class AdministratorRestartTest {
                 throw IOException("Permission was not granted")
             }
 
-            val result = shouldThrow<IOException> { restart.restart(request(root)) }
+            val result = shouldThrow<IOException> { restart.restart(listOf(request(root))) }
 
             assertSoftly {
                 result.message shouldBe "Permission was not granted"
@@ -114,7 +114,7 @@ class AdministratorRestartTest {
                 }
             }
 
-            val result = shouldThrow<IOException> { restart.restart(request(root)) }
+            val result = shouldThrow<IOException> { restart.restart(listOf(request(root))) }
             client!!.join()
 
             result.message.orEmpty() shouldContain "acknowledge"

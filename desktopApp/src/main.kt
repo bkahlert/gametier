@@ -42,10 +42,7 @@ fun main(args: Array<String>) {
     val restart = if (System.getProperty("os.name").startsWith("Windows")) AdministratorRestart() else null
     val controller = AppController(scope, settings, ManagerPromotionOperations(settings), FileSelectionPreparer(),
         restartAsAdministrator = restart?.let { { request -> it.restart(request) } })
-    restartSelection?.request?.let {
-        controller.select(listOf(it.original))
-        controller.setReviewDirectory(it.directory)
-    }
+    restartSelection?.requests?.let(controller::restorePromotions)
     try {
         application {
             val state by controller.state.collectAsState()
