@@ -5,6 +5,8 @@ import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.Promotion
 import com.bkahlert.gametier.game.PromotionCondition
 import com.bkahlert.gametier.game.TransferState
+import com.bkahlert.gametier.files.TransferPhase
+import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.testsupport.filesystem.createTestJunction
 import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
 import io.kotest.assertions.assertSoftly
@@ -25,6 +27,83 @@ import org.junit.jupiter.api.Nested
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppControllerTest {
+    @Nested
+    inner class Progress {
+        @Test
+        fun `on promotion progress active row updates and completed result ignores late callbacks`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            var callback: (TransferProgress) -> Unit = {}
+            val operations = object : PromotionOperations by AppTestOperations() {
+                override suspend fun promote(original: java.nio.file.Path, directory: java.nio.file.Path, onProgress: (TransferProgress) -> Unit) {
+                    callback = onProgress
+                    onProgress(TransferProgress(TransferPhase.TRANSFERRING, 2, 10))
+                    gate.await()
+                    onProgress(TransferProgress(TransferPhase.FINALIZING, 10, 10))
+                }
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.select(listOf(appPath("game")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val active = app.state.value.activity.single()
+            gate.complete(Unit)
+            runCurrent()
+            val complete = app.state.value.activity.single()
+            callback(TransferProgress(TransferPhase.TRANSFERRING, 3, 10))
+            runCurrent()
+            val result = app.state.value.activity.single()
+
+            assertSoftly {
+                active.status shouldBe ActivityStatus.RUNNING
+                active.progress shouldBe TransferProgress(TransferPhase.TRANSFERRING, 2, 10)
+                complete.status shouldBe ActivityStatus.SUCCEEDED
+                complete.progress shouldBe TransferProgress(TransferPhase.FINALIZING, 10, 10)
+                result shouldBe complete
+            }
+        }
+
+        @Test
+        fun `on demotion recovery failure original error remains authoritative`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            val error = IOException("original copy failed")
+            val recoveryError = IOException("recovery failed")
+            error.addSuppressed(recoveryError)
+            val promotion = Promotion(appPath("game"), appPath("destination/game"), TransferState.PROMOTED, PromotionCondition.PROMOTED)
+            val base = AppTestOperations().apply { snapshot = listOf(DestinationInventory(appPath("destination"), DestinationStatus.AVAILABLE, listOf(promotion))) }
+            var callback: (TransferProgress) -> Unit = {}
+            val operations = object : PromotionOperations by base {
+                override suspend fun demote(directory: java.nio.file.Path, name: String, onProgress: (TransferProgress) -> Unit) {
+                    callback = onProgress
+                    onProgress(TransferProgress(TransferPhase.TRANSFERRING, 4, 10, recovering = true))
+                    gate.await()
+                    throw error
+                }
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.requestDemote(promotion)
+            app.confirmDemote()
+            runCurrent()
+            val active = app.state.value.activity.single()
+            gate.complete(Unit)
+            runCurrent()
+            val failed = app.state.value.activity.single()
+            callback(TransferProgress(TransferPhase.FINALIZING, 10, 10, recovering = true))
+            runCurrent()
+            val result = app.state.value.activity.single()
+
+            assertSoftly {
+                active.progress shouldBe TransferProgress(TransferPhase.TRANSFERRING, 4, 10, recovering = true)
+                failed.status shouldBe ActivityStatus.FAILED
+                failed.error shouldBeSameInstanceAs error
+                failed.error?.suppressed?.toList() shouldBe listOf(recoveryError)
+                result shouldBe failed
+            }
+        }
+    }
+
     @Nested
     inner class LinkPermission {
         @Test

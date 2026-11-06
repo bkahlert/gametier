@@ -4,6 +4,7 @@ import com.bkahlert.gametier.game.DestinationInventory
 import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.PromotionInventory
 import com.bkahlert.gametier.game.PromotionManager
+import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.getAppSettings
 import java.nio.file.Path
@@ -17,6 +18,8 @@ interface PromotionOperations {
     suspend fun inventory(): List<DestinationInventory>
     suspend fun promote(original: Path, directory: Path)
     suspend fun demote(directory: Path, name: String)
+    suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit) = promote(original, directory)
+    suspend fun demote(directory: Path, name: String, onProgress: (TransferProgress) -> Unit) = demote(directory, name)
     suspend fun destinationProblem(directory: Path): String?
 }
 
@@ -27,6 +30,8 @@ class ManagerPromotionOperations(
     override suspend fun inventory(): List<DestinationInventory> = manager.inventory()
     override suspend fun promote(original: Path, directory: Path) = manager.promote(original, directory)
     override suspend fun demote(directory: Path, name: String) = manager.demote(directory, name)
+    override suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit) = manager.promote(original, directory, onProgress)
+    override suspend fun demote(directory: Path, name: String, onProgress: (TransferProgress) -> Unit) = manager.demote(directory, name, onProgress)
     override suspend fun destinationProblem(directory: Path): String? = withContext(Dispatchers.IO) {
         val inventory = PromotionInventory.inspect(directory)
         when (inventory.status) {

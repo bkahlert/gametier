@@ -15,12 +15,16 @@ dependencies:
   - $libs.androidx.datastore.preferences.core
   - $libs.kotlinx.coroutines.core
   - $libs.kotlinx.serialization.json
+  - $libs.jna
 
 test-dependencies:
   - $libs.kotest.assertions.core
   - $libs.kotlinx.coroutines.test
 
 settings:
+  jvm:
+    test:
+      freeJvmArgs: [ --enable-native-access=ALL-UNNAMED ]
   compose:
     enabled: true
     resources:

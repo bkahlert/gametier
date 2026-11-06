@@ -1,6 +1,8 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.files.FileMover
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.getAppSettings
 import java.io.IOException
@@ -33,7 +35,10 @@ class PromotionManager internal constructor(
             .distinctBy { it.directory }.sortedBy { it.directory.toString() }
     }
 
-    suspend fun promote(original: Path, directory: Path): Unit = serialized {
+    suspend fun promote(original: Path, directory: Path): Unit = promote(original, directory) {}
+
+    suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit): Unit = serialized {
+        onProgress(TransferProgress(TransferPhase.PREPARING))
         val origin = canonicalGameEntry(original)
         val root = register(directory)
         val target = root.resolve(origin.fileName.toString())
@@ -45,13 +50,16 @@ class PromotionManager internal constructor(
         if (gameEntryExists(target)) throw IOException("Destination already exists: $target")
         FileMover.validateSource(origin)
         if (target.startsWith(origin.toRealPath())) throw IOException("Destination must not be inside the original game")
-        Promoter.promote(origin, target, operations) {
+        Promoter.promote(origin, target, operations, onProgress) {
             index.write(root, records + pending)
         }
         index.write(root, records + pending.copy(state = TransferState.PROMOTED))
     }
 
-    suspend fun demote(directory: Path, name: String): Unit = serialized {
+    suspend fun demote(directory: Path, name: String): Unit = demote(directory, name) {}
+
+    suspend fun demote(directory: Path, name: String, onProgress: (TransferProgress) -> Unit): Unit = serialized {
+        onProgress(TransferProgress(TransferPhase.PREPARING))
         val root = directory.toRealPath()
         val records = index.read(root)
         settings.rememberPromotionFolder(root.toString())
@@ -63,7 +71,7 @@ class PromotionManager internal constructor(
         FileMover.validateSource(target)
         val pending = records.map { if (it == record) it.copy(state = TransferState.DEMOTING) else it }
         index.write(root, pending)
-        Demoter.demote(record.origin, operations)
+        Demoter.demote(record.origin, operations, onProgress)
         index.write(root, records.filterNot { it == record })
     }
 

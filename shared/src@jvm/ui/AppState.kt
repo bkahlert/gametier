@@ -2,6 +2,7 @@ package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.DestinationInventory
 import com.bkahlert.gametier.game.Promotion
+import com.bkahlert.gametier.files.TransferProgress
 import java.nio.file.Path
 
 enum class AppScreen { PROMOTIONS, SETTINGS }
@@ -22,6 +23,7 @@ data class ActivityItem(
     val error: Throwable? = null,
     val message: String? = null,
     val acknowledged: Boolean = false,
+    val progress: TransferProgress? = null,
 )
 
 data class AppState(

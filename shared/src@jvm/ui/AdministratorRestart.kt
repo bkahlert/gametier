@@ -152,6 +152,7 @@ internal fun writeRestartJar(file: Path, selection: RestartSelection, workingDir
     val manifest = Manifest().apply {
         mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
         mainAttributes[Attributes.Name.MAIN_CLASS] = mainClass
+        mainAttributes.putValue("Enable-Native-Access", "ALL-UNNAMED")
         mainAttributes[Attributes.Name.CLASS_PATH] = classPath.split(File.pathSeparator).joinToString(" ") {
             workingDirectory.resolve(it).normalize().toUri().toASCIIString()
         }

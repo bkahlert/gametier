@@ -404,20 +404,27 @@ class AppController internal constructor(
             return
         }
         updateActivity(item.id) { it.copy(status = ActivityStatus.RUNNING) }
+        val progress = ActivityProgressUpdates(scope) { snapshot ->
+            updateActivity(item.id) { if (it.status == ActivityStatus.RUNNING) it.copy(progress = snapshot) else it }
+        }
         try {
             val request = item.request
             when (request.kind) {
-                TransferKind.PROMOTE -> operations.promote(request.original, request.directory)
-                TransferKind.DEMOTE -> operations.demote(request.directory, request.destination.fileName.toString())
+                TransferKind.PROMOTE -> operations.promote(request.original, request.directory, progress::report)
+                TransferKind.DEMOTE -> operations.demote(request.directory, request.destination.fileName.toString(), progress::report)
             }
             unrefreshedTransfers = unrefreshedTransfers + request
-            updateActivity(item.id) { it.copy(status = ActivityStatus.SUCCEEDED) }
+            val finalProgress = progress.close()
+            updateActivity(item.id) { it.copy(status = ActivityStatus.SUCCEEDED, progress = finalProgress) }
         } catch (error: Exception) {
+            val finalProgress = progress.close()
             error.rethrowCancellation()
             unrefreshedTransfers = unrefreshedTransfers + item.request
-            updateActivity(item.id) { it.copy(status = ActivityStatus.FAILED, error = error) }
+            updateActivity(item.id) { it.copy(status = ActivityStatus.FAILED, error = error, progress = finalProgress) }
             edit { it.copy(closeWhenFinished = false, activityExpanded = true) }
             stopAffected(item.request.directory)
+        } finally {
+            progress.close()
         }
     }
 

@@ -1,6 +1,8 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.files.SymlinkCreator
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.files.isWindowsReparsePoint
 import com.bkahlert.gametier.testsupport.filesystem.assertTestTree
 import com.bkahlert.gametier.testsupport.filesystem.createTestJunction
@@ -191,13 +193,18 @@ class DemoterTest {
             SymlinkCreator.create(original, target)
             val failure = IOException("move failed")
             val operations = GameFileOperations(move = { _, _ -> throw failure })
+            val progress = mutableListOf<TransferProgress>()
 
-            val result = shouldThrow<IOException> { Demoter.demote(original, operations) }
+            val result = shouldThrow<IOException> { Demoter.demote(original, operations, progress::add) }
 
             assertSoftly {
                 assertTransferFailure(result, original, target, "move")
                 result.cause shouldBe failure
                 result.suppressed.toList() shouldBe emptyList()
+                progress.filter { it.recovering } shouldBe listOf(
+                    TransferProgress(TransferPhase.PREPARING, recovering = true),
+                    TransferProgress(TransferPhase.FINALIZING, recovering = true),
+                )
                 Files.readSymbolicLink(original) shouldBe target.toRealPath()
                 assertTestTree(original)
                 assertTestTree(target)

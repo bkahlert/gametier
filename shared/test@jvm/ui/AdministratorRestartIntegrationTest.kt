@@ -18,6 +18,9 @@ class AdministratorRestartIntegrationTest {
             """
             class Arguments {
                 public static void main(String[] args) throws Exception {
+                    if (!Arguments.class.getModule().isNativeAccessEnabled()) {
+                        throw new IllegalStateException("Native access is disabled after restarting");
+                    }
                     try (var jar = new java.util.jar.JarFile(System.getProperty("java.class.path"))) {
                         var values = jar.getManifest().getMainAttributes();
                         var payload = new String(java.util.Base64.getDecoder().decode(values.getValue("GameTier-Selection")), java.nio.charset.StandardCharsets.UTF_8);

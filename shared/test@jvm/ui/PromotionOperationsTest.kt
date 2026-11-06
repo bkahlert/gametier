@@ -2,6 +2,9 @@ package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.PromotionManager
+import com.bkahlert.gametier.files.TransferPhase
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.testsupport.filesystem.requireSymlinkSupport
 import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
 import com.bkahlert.gametier.testsupport.filesystem.createTestJunction
 import io.kotest.assertions.assertSoftly
@@ -13,6 +16,7 @@ import java.nio.file.attribute.DosFileAttributeView
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Tag
 
 class PromotionOperationsTest {
     @Nested
@@ -112,6 +116,32 @@ class PromotionOperationsTest {
 
     @Nested
     inner class Transfers {
+        @Test
+        @Tag("symlink-success")
+        fun `on callback enabled manager operations both directions report stages and restore the file`() = withTestDirectory { root ->
+            runBlocking {
+                requireSymlinkSupport(root)
+                val original = Files.writeString(root.resolve("game"), "content")
+                val directory = Files.createDirectory(root.resolve("fast"))
+                val operations = ManagerPromotionOperations(AppTestSettings(directory))
+                val promoted = mutableListOf<TransferProgress>()
+                val demoted = mutableListOf<TransferProgress>()
+
+                operations.promote(original, directory, promoted::add)
+                operations.demote(directory, "game", demoted::add)
+                val result = Files.readString(original)
+
+                assertSoftly {
+                    promoted.first().phase shouldBe TransferPhase.PREPARING
+                    promoted.last().phase shouldBe TransferPhase.FINALIZING
+                    demoted.first().phase shouldBe TransferPhase.PREPARING
+                    demoted.last().phase shouldBe TransferPhase.FINALIZING
+                    result shouldBe "content"
+                    Files.isSymbolicLink(original) shouldBe false
+                }
+            }
+        }
+
         @Test
         fun `on manager validation failure promotion remains untouched and error retains paths`() = withTestDirectory { root ->
             runBlocking {
