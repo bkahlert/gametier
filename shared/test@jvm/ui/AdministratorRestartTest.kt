@@ -29,6 +29,19 @@ class AdministratorRestartTest {
         }
 
         @Test
+        fun `on development startup the bundled java launcher remains available`() {
+            val javaHome = appPath("runtime")
+            val payload = appPath("temp/restart payload.jar")
+
+            val result = defaultAdministratorLaunch(null, javaHome.toString())
+
+            assertSoftly {
+                result.executable shouldBe javaHome.resolve("bin/javaw.exe")
+                result.arguments(payload) shouldBe "-jar \"${payload.fileName}\" --restart"
+            }
+        }
+
+        @Test
         fun `on packaged restart the explicit payload file restores the selection`() = withTestDirectory { root ->
             val request = request(root)
             val selection = RestartSelection(listOf(request), 1234, "token", root.toString(), "classes")
