@@ -137,6 +137,7 @@ function Start-PackageFixture($Registration, [string] $Phase, [bool] $Initialize
     $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $fixtureScript +
         '" -EventPrefix "' + $eventPrefix + '" -Result "' + $resultFile + '" -Settings "' + $settingsFile +
         '" -SettingsFixture "' + $settingsFixture + '" -LinkRoot "' + (Join-Path $fixture "$Phase-link") +
+        '" -Launcher "' + (Join-Path $Registration.Package.InstallLocation 'bin/GameTier.exe') +
         '" -Initialize ' + ([int]$Initialize)
     try {
         Invoke-CommandInDesktopPackage -PackageFamilyName $Registration.Package.PackageFamilyName -AppId $Registration.AppId `
@@ -146,7 +147,8 @@ function Start-PackageFixture($Registration, [string] $Phase, [bool] $Initialize
         if (-not $result.Passed) { throw "Packaged $Phase fixture failed: $($result.Error)" }
         Assert-Equal $result.PackageFullName $Registration.Package.PackageFullName "Packaged $Phase process identity"
         $process = Get-Process -Id $result.ProcessId -ErrorAction Stop
-        return [pscustomobject]@{ Ready = $ready; Release = $release; Done = $done; Process = $process; Result = $resultFile }
+        return [pscustomobject]@{ Ready = $ready; Release = $release; Done = $done; Process = $process; Result = $resultFile;
+            ApplicationProcessId = [int]$result.ApplicationProcessId }
     } catch {
         $release.Set() | Out-Null
         $ready.Dispose(); $release.Dispose(); $done.Dispose()
@@ -167,11 +169,13 @@ function Stop-PackageFixture($Running) {
     }
 }
 
-function Start-InstalledApplication($Registration, [string] $Phase) {
+function Start-InstalledApplication($Registration, $Running, [string] $Phase) {
     $launcher = Join-Path $Registration.Package.InstallLocation 'bin/GameTier.exe'
-    $process = Start-Process -FilePath $launcher -WorkingDirectory $fixture -WindowStyle Hidden -Verb RunAs -PassThru
+    $process = Get-Process -Id $Running.ApplicationProcessId -ErrorAction Stop
     try {
-        if (-not $process.WaitForInputIdle(60000)) { throw "Installed $Phase application did not become idle within 60 seconds." }
+        if ($process.Path -ine $launcher) { throw "Installed $Phase application started an unexpected executable: $($process.Path)" }
+        . (Join-Path $PSScriptRoot 'fixtures/Wait-GameTierWindow.ps1')
+        Wait-GameTierWindow -ProcessId $process.Id | Out-Null
         $process.Refresh()
         Assert-Equal $process.HasExited $false "Installed $Phase application remains running"
         $packageData = Join-Path $env:LOCALAPPDATA "Packages\$($Registration.Package.PackageFamilyName)"
@@ -226,11 +230,12 @@ $settingsBytes = [Convert]::FromBase64String((Get-Content -Raw -LiteralPath (Joi
 [IO.File]::WriteAllBytes($settingsFixture, $settingsBytes)
 $settingsHash = (Get-FileHash -LiteralPath $settingsFixture).Hash
 @'
-param([string] $EventPrefix, [string] $Result, [string] $Settings, [string] $SettingsFixture, [string] $LinkRoot, [int] $Initialize)
+param([string] $EventPrefix, [string] $Result, [string] $Settings, [string] $SettingsFixture, [string] $LinkRoot, [string] $Launcher, [int] $Initialize)
 $ErrorActionPreference = 'Stop'
 $ready = [Threading.EventWaitHandle]::OpenExisting("$EventPrefix-ready")
 $release = [Threading.EventWaitHandle]::OpenExisting("$EventPrefix-release")
 $done = [Threading.EventWaitHandle]::OpenExisting("$EventPrefix-done")
+$application = $null
 try {
     Add-Type -TypeDefinition @"
 using System;
@@ -270,7 +275,13 @@ public static class PackageIdentity {
     if ([IO.File]::ReadAllText($link) -cne [IO.File]::ReadAllText($target)) { throw 'Packaged symlink did not resolve.' }
     Remove-Item -LiteralPath $link
     if (-not (Test-Path -LiteralPath $target)) { throw 'Removing the packaged symlink removed its target.' }
-    @{ Passed = $true; ProcessId = $PID; PackageFullName = $packageName } | ConvertTo-Json | Set-Content -LiteralPath $Result
+    $logDirectory = [IO.Path]::GetDirectoryName($Result)
+    $logPrefix = [IO.Path]::GetFileNameWithoutExtension($Result)
+    $application = Start-Process -FilePath $Launcher -WorkingDirectory $logDirectory -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $logDirectory "$logPrefix-launcher.stdout.log") `
+        -RedirectStandardError (Join-Path $logDirectory "$logPrefix-launcher.stderr.log")
+    @{ Passed = $true; ProcessId = $PID; ApplicationProcessId = $application.Id; PackageFullName = $packageName } |
+        ConvertTo-Json | Set-Content -LiteralPath $Result
     $ready.Set() | Out-Null
     if (-not $release.WaitOne([TimeSpan]::FromMinutes(5))) { throw 'Parent did not release the packaged fixture within five minutes.' }
 } catch {
@@ -278,6 +289,13 @@ public static class PackageIdentity {
     $ready.Set() | Out-Null
     exit 1
 } finally {
+    if ($null -ne $application) {
+        if (-not $application.HasExited) {
+            $application.CloseMainWindow() | Out-Null
+            $application.WaitForExit(10000) | Out-Null
+        }
+        $application.Dispose()
+    }
     $done.Set() | Out-Null
     $ready.Dispose(); $release.Dispose(); $done.Dispose()
 }
@@ -300,7 +318,7 @@ try {
     Add-AppxPackage -Path (Resolve-Path -LiteralPath $Package).Path -DeferRegistrationWhenPackagesAreInUse
     $registration = Assert-Installed $initial
     $running = Start-PackageFixture $registration 'initial' $true
-    $application = Start-InstalledApplication $registration 'initial'
+    $application = Start-InstalledApplication $registration $running 'initial'
     Assert-RetainedSettings 'Initial install'
     Add-AppxPackage -Path (Resolve-Path -LiteralPath $UpgradePackage).Path -DeferRegistrationWhenPackagesAreInUse
     $running.Process.Refresh()
@@ -316,7 +334,7 @@ try {
     $registration = Assert-Installed $upgrade
     Assert-RetainedSettings 'Upgrade'
     $running = Start-PackageFixture $registration 'upgraded' $false
-    $application = Start-InstalledApplication $registration 'upgraded'
+    $application = Start-InstalledApplication $registration $running 'upgraded'
     Stop-InstalledApplication $application
     $application = $null
     Stop-PackageFixture $running
