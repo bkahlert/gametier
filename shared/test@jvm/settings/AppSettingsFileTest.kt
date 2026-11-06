@@ -8,6 +8,16 @@ import kotlin.test.Test
 
 class AppSettingsFileTest {
     @Test
+    fun `on elevation the original users settings identity is retained`() {
+        val original = Path.of("Original user 雪").toAbsolutePath()
+        val administrator = Path.of("Administrator").toAbsolutePath()
+
+        val result = appSettingsFile(administrator.toString(), original.toString())
+
+        result shouldBe original.resolve("GameTier/settings.preferences_pb")
+    }
+
+    @Test
     fun `on local app data the settings file belongs to GameTier`() {
         val localAppData = Path.of("Local AppData").toAbsolutePath()
 
