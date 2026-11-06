@@ -3,13 +3,16 @@ description: Cache and install the pinned Linux packaging tool
 runs:
   using: composite
   steps:
+    - uses: actions/cache/restore@v5
+      id: tool-cache
+      with:
+        path: ~/.local/share/gametier/conveyor-22.3
+        key: conveyor-tool-22.3-${{ runner.os }}
     - uses: actions/cache@v5
       with:
-        path: |
-          ~/.local/share/gametier/conveyor-22.3
-          ~/.cache/hydraulic/conveyor
-        key: conveyor-22.3-${{ runner.os }}-${{ github.run_id }}
-        restore-keys: conveyor-22.3-${{ runner.os }}-
+        path: ~/.cache/hydraulic/conveyor
+        key: conveyor-tasks-22.3-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: conveyor-tasks-22.3-${{ runner.os }}-
     - shell: bash
       run: |
         tool_dir="$HOME/.local/share/gametier"
@@ -19,3 +22,8 @@ runs:
           tar -xzf "$RUNNER_TEMP/conveyor.tar.gz" -C "$tool_dir"
         fi
         echo "$tool_dir/conveyor-22.3/bin" >> "$GITHUB_PATH"
+    - uses: actions/cache/save@v5
+      if: steps.tool-cache.outputs.cache-hit != 'true'
+      with:
+        path: ~/.local/share/gametier/conveyor-22.3
+        key: conveyor-tool-22.3-${{ runner.os }}
