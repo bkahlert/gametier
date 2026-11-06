@@ -1,15 +1,79 @@
 package com.bkahlert.gametier.settings
 
+import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
+import com.bkahlert.gametier.testsupport.workflow.withSystemProperties
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.matchers.string.shouldContain
 import java.io.IOException
+import java.nio.file.Files
 import java.util.UUID
 import kotlin.test.Test
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.parallel.ResourceLock
+import org.junit.jupiter.api.parallel.Resources.SYSTEM_PROPERTIES
 
+@ResourceLock(SYSTEM_PROPERTIES)
 class WindowsExplorerIntegrationTest {
+    @Nested
+    inner class Installed {
+        @Test
+        fun `on Conveyor startup the packaged Explorer integration is available`() = withTestDirectory { root ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            Files.createFile(root.resolve("GameTierExplorer.dll"))
+
+            withSystemProperties("gametier.appPath" to root.resolve("GameTier.exe").toString(), "jpackage.app-path" to null) {
+                val result = WindowsExplorerIntegration.installed()
+
+                result.shouldBeInstanceOf<WindowsExplorerIntegration>()
+            }
+        }
+
+        @Test
+        fun `on jpackage startup the packaged Explorer integration remains available`() = withTestDirectory { root ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            Files.createFile(root.resolve("GameTierExplorer.dll"))
+
+            withSystemProperties("gametier.appPath" to null, "jpackage.app-path" to root.resolve("GameTier.exe").toString()) {
+                val result = WindowsExplorerIntegration.installed()
+
+                result.shouldBeInstanceOf<WindowsExplorerIntegration>()
+            }
+        }
+
+        @Test
+        fun `on an absent packaged DLL Explorer integration is unavailable`() = withTestDirectory { root ->
+            withSystemProperties("gametier.appPath" to root.resolve("GameTier.exe").toString(), "jpackage.app-path" to null) {
+                val result = WindowsExplorerIntegration.installed()
+
+                result shouldBe null
+            }
+        }
+
+        @Test
+        fun `on a directory named like the packaged DLL Explorer integration is unavailable`() = withTestDirectory { root ->
+            Files.createDirectory(root.resolve("GameTierExplorer.dll"))
+
+            withSystemProperties("gametier.appPath" to root.resolve("GameTier.exe").toString(), "jpackage.app-path" to null) {
+                val result = WindowsExplorerIntegration.installed()
+
+                result shouldBe null
+            }
+        }
+
+        @Test
+        fun `on development startup Explorer integration is unavailable`() {
+            withSystemProperties("gametier.appPath" to null, "jpackage.app-path" to null) {
+                val result = WindowsExplorerIntegration.installed()
+
+                result shouldBe null
+            }
+        }
+    }
+
     @Test
     fun `on an absent preference integration defaults enabled without creating it`() = withRegistry { key ->
         val integration = WindowsExplorerIntegration(key)

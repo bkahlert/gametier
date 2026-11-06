@@ -19,9 +19,10 @@ was at promotion. Snapshots live in
 ## Install
 
 [Download the latest Windows installer](https://github.com/bkahlert/gametier/releases/latest),
-open the `.msi`, then launch **GameTier** from the Start menu.
-Requires Windows x64. Install a newer version to upgrade.
-Current releases are unsigned, so Windows may show a publisher warning.
+open the `.exe`, then launch **GameTier** from the Start menu.
+Requires Windows x64 (Windows 10 version 2004 or later). The installer uses a
+self-signed certificate; approve the publisher warning and administrator prompt.
+Updates install automatically in the background when GameTier is closed.
 
 ## Use
 
@@ -31,7 +32,7 @@ Current releases are unsigned, so Windows may show a publisher warning.
    Your first destination becomes the default for future additions.
 
 You can also right-click one file or folder and choose **Promote with GameTier**
-(Windows 11: **Show more options**). Turn this option off in **Settings**.
+Turn this option off in **Settings**.
 Right-click a managed game link, its promoted files, or its backup folder to
 choose **Demote with GameTier**. Selecting an item inside returns the whole game.
 When only the snapshot remains, the menu offers **Restore backup with GameTier**.
@@ -62,3 +63,5 @@ to build, run, or test from source.
 ## License
 
 [MIT](LICENSE)
+
+Packaged with [Conveyor](https://hydraulic.dev/).

@@ -1,0 +1,21 @@
+name: Set up Conveyor
+description: Cache and install the pinned Linux packaging tool
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v5
+      with:
+        path: |
+          ~/.local/share/gametier/conveyor-22.3
+          ~/.cache/hydraulic/conveyor
+        key: conveyor-22.3-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: conveyor-22.3-${{ runner.os }}-
+    - shell: bash
+      run: |
+        tool_dir="$HOME/.local/share/gametier"
+        if [ ! -x "$tool_dir/conveyor-22.3/bin/conveyor" ]; then
+          mkdir -p "$tool_dir"
+          curl --fail --location --retry 3 https://downloads.hydraulic.dev/conveyor/conveyor-22.3-linux-amd64.tar.gz -o "$RUNNER_TEMP/conveyor.tar.gz"
+          tar -xzf "$RUNNER_TEMP/conveyor.tar.gz" -C "$tool_dir"
+        fi
+        echo "$tool_dir/conveyor-22.3/bin" >> "$GITHUB_PATH"

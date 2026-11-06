@@ -37,22 +37,77 @@ jobs:
       - name: Stage application JARs
         shell: cmd
         run: kotlin.bat do stageInstaller -m desktopApp
-      - name: Build installer lifecycle fixtures
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows-application
+          path: |
+            build/tasks/_desktopApp_stageInstaller@packaging/*.jar
+            build/explorer/Release/GameTierExplorer.dll
+          if-no-files-found: error
+
+  package:
+    name: Package Windows update fixtures
+    needs: windows
+    runs-on: ubuntu-latest
+    env:
+      CONVEYOR_AGREE_TO_LICENSE: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows-application
+          path: build
+      - uses: ./.github/actions/setup-conveyor
+      - name: Generate disposable test key
+        run: conveyor --agree-to-license=1 --console=plain keys generate --no-passphrase --no-keyring
+      - name: Build two signed update sites
         shell: pwsh
         run: |
-          ./desktopApp/packaging/installer/Build-Installer.ps1 -AppVersion 0.0.1
-          ./desktopApp/packaging/installer/Build-Installer.ps1 -AppVersion 0.0.2
-      - name: Test Explorer installer lifecycle
-        shell: pwsh
+          foreach ($version in @('0.0.1', '0.0.2')) {
+            $destination = "build/update-$version"
+            ./desktopApp/packaging/installer/Build-UpdateSite.ps1 -AppVersion $version -Destination $destination -TestPackage -StageOnly
+            conveyor --agree-to-license=1 --console=plain --parallelism=2 -f "$destination/build.conveyor.conf" make site --output-dir "$env:GITHUB_WORKSPACE/$destination/site"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: update-fixtures
+          path: |
+            build/update-0.0.1/site
+            build/update-0.0.2/site
+          if-no-files-found: error
+
+  installer:
+    name: Verify Windows install and deferred update
+    needs: package
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows-application
+          path: build
+      - uses: actions/download-artifact@v7
+        with:
+          name: update-fixtures
+          path: build
+      - name: Verify generated packages
+        shell: powershell
         run: |
-          ./desktopApp/packaging/installer/Test-ExplorerInstaller.ps1 `
-            -Installer build/release/GameTier-0.0.1.msi `
-            -UpgradeInstaller build/release/GameTier-0.0.2.msi `
-            -ExplorerLibrary build/explorer/Release/GameTierExplorer.dll
+          foreach ($version in @('0.0.1', '0.0.2')) {
+            ./desktopApp/packaging/installer/Test-UpdateSite.ps1 -Site "build/update-$version/site" -AppVersion $version -ExplorerLibrary build/explorer/Release/GameTierExplorer.dll
+          }
+      - name: Test install, deferred upgrade, and uninstall
+        shell: powershell
+        run: |
+          $initial = Get-ChildItem build/update-0.0.1/site/*.msix
+          $upgrade = Get-ChildItem build/update-0.0.2/site/*.msix
+          $certificate = Get-ChildItem build/update-0.0.1/site/*.crt
+          ./desktopApp/packaging/installer/Test-UpdateInstaller.ps1 -Package $initial.FullName -UpgradePackage $upgrade.FullName -Certificate $certificate.FullName
       - name: Preserve installer failure logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
           name: installer-logs
-          path: ${{ runner.temp }}/gametier-installer-*/*.log
+          path: ${{ runner.temp }}/gametier-update-lifecycle-*/
           if-no-files-found: ignore

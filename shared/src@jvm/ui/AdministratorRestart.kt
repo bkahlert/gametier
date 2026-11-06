@@ -1,5 +1,6 @@
 package com.bkahlert.gametier.ui
 
+import com.bkahlert.gametier.files.packagedApplicationPath
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
@@ -154,10 +155,10 @@ internal data class AdministratorLaunch(val executable: Path, val packaged: Bool
 }
 
 internal fun defaultAdministratorLaunch(
-    appPath: String? = System.getProperty("jpackage.app-path"),
+    appPath: Path? = packagedApplicationPath(),
     javaHome: String = System.getProperty("java.home"),
 ): AdministratorLaunch = appPath?.let {
-    AdministratorLaunch(Path.of(it), true)
+    AdministratorLaunch(it, true)
 } ?: AdministratorLaunch(Path.of(javaHome, "bin", "javaw.exe"), false)
 
 private val loopback: InetAddress = InetAddress.getByName("127.0.0.1")
