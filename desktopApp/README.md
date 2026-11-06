@@ -4,7 +4,7 @@ Run these commands from the repository root on Windows:
 
 ```powershell
 .\kotlin.bat build
-.\kotlin.bat run -m desktopApp
+.\kotlin.bat run -m desktopApp --jvm-args=--enable-native-access=ALL-UNNAMED
 .\kotlin.bat test
 ```
 

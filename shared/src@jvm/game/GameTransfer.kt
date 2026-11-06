@@ -2,6 +2,8 @@ package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.files.FileMover
 import com.bkahlert.gametier.files.SymlinkCreator
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.files.isWindowsReparsePoint
 
 import java.io.IOException
@@ -10,10 +12,22 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 
 internal class GameFileOperations(
-    val move: (Path, Path) -> Unit = FileMover::move,
+    val move: (Path, Path) -> Unit = defaultMove,
     val createLink: (Path, Path) -> Unit = SymlinkCreator::create,
     val delete: (Path) -> Unit = { Files.delete(it) },
-)
+) {
+    fun move(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit) {
+        if (move === defaultMove) FileMover.move(source, destination, onProgress)
+        else {
+            onProgress(TransferProgress(TransferPhase.MOVING))
+            move(source, destination)
+        }
+    }
+
+    private companion object {
+        val defaultMove: (Path, Path) -> Unit = FileMover::move
+    }
+}
 
 internal fun canonicalGameEntry(path: Path): Path {
     val absolute = path.toAbsolutePath().normalize()
@@ -48,5 +62,13 @@ internal inline fun recoverTransfer(failure: IOException, recovery: () -> Unit) 
         recovery()
     } catch (recoveryFailure: Exception) {
         failure.addSuppressed(recoveryFailure)
+    }
+}
+
+internal fun recoveryProgress(failure: IOException, onProgress: (TransferProgress) -> Unit): (TransferProgress) -> Unit = { progress ->
+    try {
+        onProgress(progress.copy(recovering = true))
+    } catch (error: Throwable) {
+        failure.addSuppressed(error)
     }
 }

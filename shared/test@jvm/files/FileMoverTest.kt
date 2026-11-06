@@ -6,6 +6,7 @@ import com.bkahlert.gametier.testsupport.filesystem.createTestTree
 import com.bkahlert.gametier.testsupport.filesystem.withTestArchive
 import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
 
+import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -15,8 +16,75 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.attribute.FileTime
 import kotlin.test.Test
+import org.junit.jupiter.api.Nested
 
 class FileMoverTest {
+    @Nested
+    inner class Progress {
+        @Test
+        fun `on a same volume move only stages are reported`() = withTestDirectory { root ->
+            val source = Files.writeString(root.resolve("source"), "data")
+            val progress = mutableListOf<TransferProgress>()
+
+            val result = FileMover.move(source, root.resolve("destination"), progress::add)
+
+            assertSoftly {
+                result shouldBe Unit
+                progress shouldBe listOf(TransferProgress(TransferPhase.PREPARING), TransferProgress(TransferPhase.MOVING))
+            }
+        }
+
+        @Test
+        fun `on copying a tree totals stay fixed and advance within a file`() = withTestDirectory { root ->
+            withTestArchive(root) { archive ->
+                val source = Files.createDirectory(root.resolve("source"))
+                Files.write(source.resolve("large"), ByteArray(3 * 1024 * 1024) { (it % 251).toByte() })
+                Files.writeString(source.resolve("small"), "data")
+                val progress = mutableListOf<TransferProgress>()
+
+                val result = FileMover.move(source, archive.resolve("destination"), progress::add)
+
+                assertSoftly {
+                    result shouldBe Unit
+                    val copying = progress.filter { it.phase == TransferPhase.TRANSFERRING }
+                    copying.map { it.totalBytes }.distinct() shouldBe listOf(3L * 1024 * 1024 + 4)
+                    copying.any { it.transferredBytes in 1 until 3L * 1024 * 1024 } shouldBe true
+                    copying.map { it.transferredBytes }.zipWithNext().all { (a, b) -> a <= b } shouldBe true
+                    progress.last() shouldBe TransferProgress(TransferPhase.FINALIZING, 3L * 1024 * 1024 + 4, 3L * 1024 * 1024 + 4)
+                }
+            }
+        }
+
+        @Test
+        fun `on an empty cross volume tree no byte total is invented`() = withTestDirectory { root ->
+            withTestArchive(root) { archive ->
+                val source = Files.createDirectory(root.resolve("source"))
+                Files.createFile(source.resolve("empty"))
+                val progress = mutableListOf<TransferProgress>()
+
+                val result = FileMover.move(source, archive.resolve("destination"), progress::add)
+
+                assertSoftly {
+                    result shouldBe Unit
+                    progress.all { it.totalBytes == 0L && it.transferredBytes == 0L } shouldBe true
+                    progress.last().phase shouldBe TransferPhase.FINALIZING
+                }
+            }
+        }
+
+        @Test
+        fun `on validation failure progress never announces copying`() = withTestDirectory { root ->
+            val progress = mutableListOf<TransferProgress>()
+
+            val result = shouldThrow<IOException> { FileMover.move(root.resolve("missing"), root.resolve("destination"), progress::add) }
+
+            assertSoftly {
+                (result.cause is IOException) shouldBe true
+                progress shouldBe listOf(TransferProgress(TransferPhase.PREPARING))
+            }
+        }
+    }
+
     @Test
     fun `on moving a file its contents and timestamp are retained`() = withTestDirectory { root ->
         val source = Files.writeString(root.resolve("source"), "game data")
@@ -57,7 +125,7 @@ class FileMoverTest {
                 Files.exists(source) shouldBe false
                 assertTestTree(destination)
             }
-        }
+    }
 
     @Test
     fun `on moving a file across filesystems its timestamp is retained`() = withTestDirectory { root ->

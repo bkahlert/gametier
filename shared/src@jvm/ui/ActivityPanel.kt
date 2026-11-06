@@ -27,7 +27,6 @@ internal fun ActivityPanel(state: AppState, controller: AppController, onDetails
     Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant) {
         Column {
             HorizontalDivider()
-            if (summary.running > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = { controller.setActivityExpanded(!state.activityExpanded) }) {
@@ -64,17 +63,12 @@ internal fun ActivityPanel(state: AppState, controller: AppController, onDetails
 private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge: () -> Unit,
     onPermission: (() -> Unit)?, permissionEnabled: Boolean) {
     val failed = item.status == ActivityStatus.FAILED || item.status == ActivityStatus.STOPPED
+    val progress = activityProgressPresentation(item)
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         HorizontalDivider()
         Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                StatusLabel(when (item.status) {
-                    ActivityStatus.QUEUED -> "Queued"
-                    ActivityStatus.RUNNING -> if (item.request.kind == TransferKind.PROMOTE) "Promoting" else "Demoting"
-                    ActivityStatus.SUCCEEDED -> if (item.request.kind == TransferKind.PROMOTE) "Promoted" else "Demoted"
-                    ActivityStatus.FAILED -> "Failed"
-                    ActivityStatus.STOPPED -> "Stopped"
-                }, when (item.status) {
+                StatusLabel(progress.label, when (item.status) {
                     ActivityStatus.RUNNING, ActivityStatus.QUEUED -> StatusTone.ACTIVE
                     ActivityStatus.FAILED, ActivityStatus.STOPPED -> StatusTone.WARNING
                     ActivityStatus.SUCCEEDED -> StatusTone.SUCCESS
@@ -83,6 +77,8 @@ private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge
                 Text("${if (item.request.kind == TransferKind.PROMOTE) item.request.original else item.request.destination} → ${if (item.request.kind == TransferKind.PROMOTE) item.request.destination else item.request.original}",
                     style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                progress.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                progress.fraction?.let { fraction -> LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth()) }
                 (item.message ?: item.error?.message)?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }

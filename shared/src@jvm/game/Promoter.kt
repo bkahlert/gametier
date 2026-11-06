@@ -1,6 +1,8 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.files.FileMover
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.files.TransferPhase
 
 import java.io.IOException
 import java.nio.file.Path
@@ -10,14 +12,20 @@ import java.util.UUID
 object Promoter {
     fun promote(original: Path, destination: Path) = promote(original, destination, GameFileOperations())
 
-    internal fun promote(original: Path, destination: Path, operations: GameFileOperations, beforeMove: () -> Unit = {}) {
+    fun promote(original: Path, destination: Path, onProgress: (TransferProgress) -> Unit) =
+        promote(original, destination, GameFileOperations(), onProgress)
+
+    internal fun promote(original: Path, destination: Path, operations: GameFileOperations,
+                         onProgress: (TransferProgress) -> Unit = {}, beforeMove: () -> Unit = {}) {
         var phase = "validation"
         var moved = false
         var moveAttempted = false
         var creatingProbe = false
         var originalPath = original
         var destinationPath = destination
+        var progress = TransferProgress(TransferPhase.PREPARING)
         try {
+            onProgress(TransferProgress(TransferPhase.PREPARING))
             originalPath = canonicalGameEntry(original)
             destinationPath = canonicalGameEntry(destination)
             if (originalPath.fileSystem != destinationPath.fileSystem) {
@@ -41,15 +49,28 @@ object Promoter {
             beforeMove()
             phase = "move"
             moveAttempted = true
-            operations.move(originalPath, destinationPath)
+            operations.move(originalPath, destinationPath) {
+                progress = it
+                onProgress(it)
+            }
             moved = true
             phase = "link creation"
+            onProgress(progress.copy(phase = TransferPhase.FINALIZING))
             operations.createLink(originalPath, destinationPath)
         } catch (error: Exception) {
             val failure = if (creatingProbe) SymlinkPreflightException(original, destination, phase, error)
             else transferFailure("promotion", original, destination, phase, error, moveAttempted)
             if (moved) recoverTransfer(failure) {
-                if (!gameEntryExists(originalPath)) operations.move(destinationPath, originalPath)
+                if (!gameEntryExists(originalPath)) {
+                    val reportRecovery = recoveryProgress(failure, onProgress)
+                    reportRecovery(TransferProgress(TransferPhase.PREPARING))
+                    var recovery = TransferProgress(TransferPhase.PREPARING)
+                    operations.move(destinationPath, originalPath) {
+                        recovery = it
+                        reportRecovery(it)
+                    }
+                    reportRecovery(recovery.copy(phase = TransferPhase.FINALIZING))
+                }
             }
             throw failure
         }

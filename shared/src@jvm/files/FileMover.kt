@@ -7,6 +7,8 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.ReadOnlyFileSystemException
 import java.nio.file.SimpleFileVisitor
+import java.nio.file.StandardOpenOption.CREATE_NEW
+import java.nio.file.StandardOpenOption.WRITE
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.DosFileAttributeView
 
@@ -15,9 +17,12 @@ object FileMover {
         scan(canonicalEntry(source))
     }
 
-    fun move(source: Path, destination: Path) {
+    fun move(source: Path, destination: Path) = move(source, destination) {}
+
+    fun move(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit) {
         var phase = "validation"
         try {
+            onProgress(TransferProgress(TransferPhase.PREPARING))
             val sourcePath = canonicalEntry(source)
             val destinationPath = canonicalEntry(destination)
             if (Files.exists(destinationPath, NOFOLLOW_LINKS) || isWindowsReparsePoint(destinationPath)) {
@@ -29,16 +34,32 @@ object FileMover {
             val entries = scan(sourcePath)
             if (Files.getFileStore(sourcePath) == Files.getFileStore(destinationPath.parent)) {
                 phase = "rename"
+                onProgress(TransferProgress(TransferPhase.MOVING))
                 Files.move(sourcePath, destinationPath)
                 return
             }
 
+            val nativeCopy = WindowsFileCopier.supports(sourcePath) && WindowsFileCopier.supports(destinationPath)
+            val sizes = entries.filterValues { !it.isDirectory }.mapValues { (relative, attributes) ->
+                if (nativeCopy) WindowsFileCopier.size(resolve(sourcePath, relative)) else attributes.size()
+            }
+            val total = sizes.values.fold(0L, Math::addExact)
+            var transferred = 0L
             phase = "copy"
+            onProgress(TransferProgress(TransferPhase.TRANSFERRING, transferred, total))
             entries.forEach { (relative, attributes) ->
                 val from = resolve(sourcePath, relative)
                 val to = resolve(destinationPath, relative)
-                if (attributes.isDirectory) Files.createDirectory(to) else Files.copy(from, to)
+                if (attributes.isDirectory) Files.createDirectory(to) else {
+                    val before = transferred
+                    val report: (Long) -> Unit = { bytes ->
+                        transferred = before + bytes
+                        onProgress(TransferProgress(TransferPhase.TRANSFERRING, transferred, total))
+                    }
+                    if (nativeCopy) WindowsFileCopier.copy(from, to, report) else copyWithProgress(from, to, report)
+                }
             }
+            onProgress(TransferProgress(TransferPhase.FINALIZING, transferred, total))
             entries.entries.toList().asReversed().forEach { (relative, _) ->
                 val from = resolve(sourcePath, relative)
                 val to = resolve(destinationPath, relative)
@@ -74,6 +95,22 @@ object FileMover {
             throw moveFailure(source, destination, phase, error)
         } catch (error: UnsupportedOperationException) {
             throw moveFailure(source, destination, phase, error)
+        }
+    }
+
+    private fun copyWithProgress(source: Path, destination: Path, onBytes: (Long) -> Unit) {
+        Files.newInputStream(source).use { input ->
+            Files.newOutputStream(destination, CREATE_NEW, WRITE).use { output ->
+                val buffer = ByteArray(1024 * 1024)
+                var transferred = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    transferred += count
+                    onBytes(transferred)
+                }
+            }
         }
     }
 

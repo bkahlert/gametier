@@ -1,6 +1,8 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.settings.DataStoreAppSettings
+import com.bkahlert.gametier.files.TransferProgress
+import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.settings.MemoryPreferencesStore
 import com.bkahlert.gametier.testsupport.filesystem.requireSymlinkSupport
 import com.bkahlert.gametier.testsupport.filesystem.createTestJunction
@@ -22,6 +24,99 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
 
 class PromotionManagerTest {
+    @Nested
+    inner class Progress {
+        @Test
+        fun `on a finalizing observer failure recovery proceeds even if its observer also fails`() = withTestDirectory { root ->
+            runBlocking {
+                val original = Files.writeString(root.resolve("game"), "data")
+                val folder = Files.createDirectory(root.resolve("games"))
+                val failure = IOException("finalizing observer failed")
+                val recoveryFailure = IOException("recovery observer failed")
+                val manager = PromotionManager(DataStoreAppSettings(MemoryPreferencesStore()), GameFileOperations(
+                    createLink = { link, _ -> Files.writeString(link, "probe") },
+                ), PromotionIndex())
+
+                val result = shouldThrow<IOException> {
+                    manager.promote(original, folder) {
+                        if (it.recovering) throw recoveryFailure
+                        if (it.phase == TransferPhase.FINALIZING) throw failure
+                    }
+                }
+
+                assertSoftly {
+                    generateSequence(result as Throwable) { it.cause }.last() shouldBe failure
+                    generateSequence(result as Throwable) { it.cause }.any { recoveryFailure in it.suppressed } shouldBe true
+                    Files.exists(original) shouldBe true
+                    if (Files.exists(original)) Files.readString(original) shouldBe "data"
+                    Files.exists(folder.resolve("game")) shouldBe false
+                }
+            }
+        }
+
+        @Test
+        fun `on promotion progress reaches finalizing before metadata completes`() = withTestDirectory { root ->
+            runBlocking {
+                val original = Files.writeString(root.resolve("game"), "data")
+                val folder = Files.createDirectory(root.resolve("games"))
+                val updates = mutableListOf<TransferProgress>()
+                val manager = PromotionManager(DataStoreAppSettings(MemoryPreferencesStore()), GameFileOperations(
+                    createLink = { link, _ -> Files.writeString(link, "link") },
+                ), PromotionIndex())
+
+                val result = manager.promote(original, folder, updates::add)
+
+                assertSoftly {
+                    result shouldBe Unit
+                    updates.first().phase shouldBe TransferPhase.PREPARING
+                    updates.any { it.phase == TransferPhase.MOVING } shouldBe true
+                    updates.last() shouldBe TransferProgress(TransferPhase.FINALIZING)
+                    updates.none { it.recovering } shouldBe true
+                    PromotionIndex().read(folder).single().state shouldBe TransferState.PROMOTED
+                }
+            }
+        }
+
+        @Test
+        fun `on final link failure recovery resets progress and retains the original error`() = withTestDirectory { root ->
+            runBlocking {
+                val original = Files.writeString(root.resolve("game"), "data")
+                val folder = Files.createDirectory(root.resolve("games"))
+                val updates = mutableListOf<TransferProgress>()
+                val failure = IOException("final link failed")
+                val manager = PromotionManager(DataStoreAppSettings(MemoryPreferencesStore()), GameFileOperations(
+                    createLink = { link, _ -> if (link == original) throw failure else Files.writeString(link, "probe") },
+                ), PromotionIndex())
+
+                val result = shouldThrow<IOException> { manager.promote(original, folder, updates::add) }
+
+                assertSoftly {
+                    generateSequence(result as Throwable) { it.cause }.last() shouldBe failure
+                    val recovery = updates.filter { it.recovering }
+                    recovery.first() shouldBe TransferProgress(TransferPhase.PREPARING, recovering = true)
+                    recovery.last() shouldBe TransferProgress(TransferPhase.FINALIZING, recovering = true)
+                    Files.readString(original) shouldBe "data"
+                    Files.exists(folder.resolve("game")) shouldBe false
+                }
+            }
+        }
+
+        @Test
+        fun `on demotion validation failure only preparing is reported`() = withTestDirectory { root ->
+            runBlocking {
+                val updates = mutableListOf<TransferProgress>()
+                val manager = PromotionManager(DataStoreAppSettings(MemoryPreferencesStore()))
+
+                val result = shouldThrow<IOException> { manager.demote(root, "missing", updates::add) }
+
+                assertSoftly {
+                    result.message.isNullOrBlank() shouldBe false
+                    updates shouldBe listOf(TransferProgress(TransferPhase.PREPARING))
+                }
+            }
+        }
+    }
+
     @Nested
     inner class Registration {
         @Test

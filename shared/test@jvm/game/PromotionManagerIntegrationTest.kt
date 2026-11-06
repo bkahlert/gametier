@@ -1,6 +1,8 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.settings.withSettingsStore
+import com.bkahlert.gametier.files.TransferPhase
+import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.settings.DataStoreAppSettings
 import com.bkahlert.gametier.settings.MemoryPreferencesStore
 import com.bkahlert.gametier.testsupport.filesystem.assertTestTree
@@ -10,6 +12,8 @@ import com.bkahlert.gametier.testsupport.filesystem.testVolumeCases
 import com.bkahlert.gametier.testsupport.filesystem.testVolumePairCases
 import io.kotest.assertions.assertSoftly
 import io.kotest.matchers.shouldBe
+import io.kotest.assertions.throwables.shouldThrow
+import java.io.IOException
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Nested
@@ -17,6 +21,36 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.TestFactory
 
 class PromotionManagerIntegrationTest {
+    @Nested
+    inner class Progress {
+        @TestFactory
+        fun `on final link failure across volumes recovery has independent measured totals`() = testVolumePairCases { from, to ->
+            runBlocking {
+                val original = Files.write(from.resolve("game.rom"), ByteArray(3 * 1024 * 1024))
+                val updates = mutableListOf<TransferProgress>()
+                val failure = IOException("final link failed")
+                val manager = PromotionManager(DataStoreAppSettings(MemoryPreferencesStore()), GameFileOperations(
+                    createLink = { link, _ -> if (link == original) throw failure else Files.writeString(link, "probe") },
+                ), PromotionIndex())
+
+                val result = shouldThrow<IOException> { manager.promote(original, to, updates::add) }
+
+                assertSoftly {
+                    generateSequence(result as Throwable) { it.cause }.last() shouldBe failure
+                    val forward = updates.filter { !it.recovering && it.phase == TransferPhase.TRANSFERRING }
+                    val recovery = updates.filter { it.recovering && it.phase == TransferPhase.TRANSFERRING }
+                    forward.first().transferredBytes shouldBe 0L
+                    recovery.first().transferredBytes shouldBe 0L
+                    forward.last().transferredBytes shouldBe 3L * 1024 * 1024
+                    recovery.last().transferredBytes shouldBe 3L * 1024 * 1024
+                    recovery.map { it.totalBytes }.distinct() shouldBe listOf(3L * 1024 * 1024)
+                    Files.size(original) shouldBe 3L * 1024 * 1024
+                    Files.exists(to.resolve("game.rom")) shouldBe false
+                }
+            }
+        }
+    }
+
     @Nested
     inner class Persistence {
         @TestFactory
