@@ -1,0 +1,4 @@
+product: jvm/amper-plugin
+
+test-dependencies:
+  - $libs.kotest.assertions.core

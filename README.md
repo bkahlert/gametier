@@ -28,6 +28,17 @@ The `kotlin` (macOS/Linux) and `kotlin.bat` (Windows) scripts in the project roo
 the Kotlin Toolchain: they download the pinned toolchain version on first use, so no separate installation is required.
 Build the whole project with `./kotlin build`.
 
+### Releases
+
+Push a tag such as `v0.1.0` to build and publish a Windows x64 MSI on
+[GitHub Releases](https://github.com/bkahlert/gametier/releases). Tags use
+`vMAJOR.MINOR.PATCH`. The release workflow runs the existing tests, packages
+the application JARs with `jpackage`, and includes the Java runtime. Users do
+not need Java installed. Run a newer installer to upgrade an existing installation.
+The initial releases are unsigned.
+
+GameTier is available under the [MIT license](LICENSE).
+
 ### Running
 
 Use the run configurations provided by the run widget in your IDE's toolbar. You can also run each module from the
