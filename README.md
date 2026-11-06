@@ -10,6 +10,20 @@ the [Kotlin Toolchain](https://kotlin-toolchain.org/dev/).
   implementations. [src](./shared/src) is for common code; the sibling `src@<platform>` folders (for example
   `src@android`) hold code compiled only for the platform named in the folder.
 
+Sources are grouped by responsibility inside the existing source roots. Kotlin
+packages use the prefix `com.bkahlert.gametier`; tests mirror the source packages.
+
+| Package | Responsibility | Sources |
+| --- | --- | --- |
+| `game` | Promotion, demotion, and recovery | [JVM](./shared/src@jvm/game) |
+| `files` | Independent file moves and symlink creation | [JVM](./shared/src@jvm/files) |
+| `settings` | Preferences, validation, and persistence | [Common](./shared/src/settings), [JVM](./shared/src@jvm/settings) |
+| `ui` | Compose entry and greeting/platform scaffold | [Common](./shared/src/ui), [JVM](./shared/src@jvm/ui) |
+
+Feature fixtures live with their tests. Reusable [filesystem test support](./shared/test@jvm/testsupport/filesystem)
+owns cleanup, symlink prerequisites, and the volume matrix; [workflow test support](./shared/test@jvm/testsupport/workflow)
+owns PowerShell execution, privilege checks, and script workflow tests.
+
 The `kotlin` (macOS/Linux) and `kotlin.bat` (Windows) scripts in the project root are self-bootstrapping wrappers for
 the Kotlin Toolchain: they download the pinned toolchain version on first use, so no separate installation is required.
 Build the whole project with `./kotlin build`.
@@ -126,7 +140,8 @@ The reusable `scripts/TestVolumes.psm1` facility exports
 `Invoke-WithTestVolumes -Action { ... }`, with optional `-ExistingVolumes`.
 It provisions and cleans up fixtures around the action and restores
 `GAMETIER_TEST_VOLUMES` even on failure. All filesystem suites share volume
-validation, pairings, and per-test directories in `TestVolumes.kt`.
+validation, pairings, and per-test directories in
+[`TestVolumes.kt`](./shared/test@jvm/testsupport/filesystem/TestVolumes.kt).
 `Test-FileMoves.ps1` remains a compatibility entry point to the shared runner.
 
 ---
