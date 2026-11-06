@@ -14,7 +14,7 @@ there. The promoted files receive subsequent changes; the snapshot stays as it
 was at promotion. Snapshots live in
 `<source-drive>:\.gametier\backups\<original-name>`.
 
-![GameTier listing Clockwork Vale, a folder-based game, and Starfall Circuit, a ROM](docs/screenshots/promotions.png)
+![GameTier listing two folder-based games and a ROM-based game](docs/screenshots/promotions.png)
 
 *Fictional demo games: Clockwork Vale (folder) and Starfall Circuit (ROM), moving from E: to C:.*
 
