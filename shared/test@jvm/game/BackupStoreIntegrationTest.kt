@@ -13,6 +13,7 @@ class BackupStoreIntegrationTest {
         val storage = root.resolve(".gametier")
         val store = BackupStore({ storage.resolve("backups") }, { listOf(root) })
         val first = store.reserve(Files.writeString(root.resolve("first"), "source"), root.resolve("games/first"))
+        Files.isHidden(storage) shouldBe true
         Files.getFileAttributeView(storage, DosFileAttributeView::class.java).setHidden(false)
 
         val second = store.reserve(Files.writeString(root.resolve("second"), "source"), root.resolve("games/second"))
