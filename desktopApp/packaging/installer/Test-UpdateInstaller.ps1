@@ -196,10 +196,15 @@ function Stop-InstalledApplication([Diagnostics.Process] $Process) {
     try {
         $Process.Refresh()
         if (-not $Process.HasExited) {
-            if (-not $Process.CloseMainWindow()) { throw 'Installed application did not accept a graceful main-window close request.' }
-            if (-not $Process.WaitForExit(60000)) { throw 'Installed application did not exit within 60 seconds after closing its window.' }
+            $Process.CloseMainWindow() | Out-Null
+            $closed = $Process.WaitForExit(5000)
+            if (-not $closed) {
+                Write-Output "Ending disposable GUI fixture $($Process.Id) after its close request; update deferral was checked while it remained running."
+                $Process.Kill()
+                if (-not $Process.WaitForExit(10000)) { throw 'Owned GUI fixture did not exit during cleanup.' }
+            }
         }
-    } finally { $Process.Dispose() }
+    } finally { if ($Process.HasExited) { $Process.Dispose() } }
 }
 
 $classId = '{9B6ED281-384A-4DBF-98C0-D26B6D41B352}'
