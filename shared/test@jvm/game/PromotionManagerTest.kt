@@ -1,6 +1,7 @@
 package com.bkahlert.gametier.game
 
 import com.bkahlert.gametier.settings.DataStoreAppSettings
+import com.bkahlert.gametier.files.FileMover
 import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.settings.MemoryPreferencesStore
@@ -13,6 +14,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -22,8 +24,110 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class PromotionManagerTest {
+    @Test
+    fun `on backup contents promotion refuses before destination registration or link preflight`() = withTestDirectory { root ->
+        runBlocking {
+            val original = Files.writeString(Files.createDirectories(root.resolve(".gametier/backups/game")).resolve("data"), "snapshot")
+            val directory = Files.createDirectory(root.resolve("destination"))
+            val settings = DataStoreAppSettings(MemoryPreferencesStore())
+            val manager = isolatedPromotionManager(root, settings, GameFileOperations(createLink = { _, _ ->
+                throw IOException("required privilege is not held")
+            }))
+
+            val result = shouldThrow<IOException> { manager.promote(original, directory) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "backup storage"
+                settings.promotionFolders.first() shouldBe emptySet()
+                Files.list(directory).use { it.count() } shouldBe 0L
+                Files.exists(root.resolve("backups")) shouldBe false
+                Files.readString(original) shouldBe "snapshot"
+            }
+        }
+    }
+
+    @Nested
+    inner class CanonicalSources {
+        @Test
+        fun `on a case varied source its canonical basename is copied and indexed`() = withTestDirectory { root ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val original = Files.writeString(root.resolve("Long Game Name.rom"), "retained")
+
+            assertCanonicalSource(root, original, root.resolve("long game name.ROM"))
+        }
+
+        @Test
+        fun `on a short source alias its long basename is copied and indexed`() = withTestDirectory { root ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val original = Files.writeString(root.resolve("Long Game Name.rom"), "retained")
+            val process = ProcessBuilder("cmd.exe", "/d", "/c", "for %I in (\"$original\") do @echo %~sI")
+                .redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            check(process.waitFor() == 0) { output }
+            val alias = Path.of(output.trim())
+            assumeTrue(alias.fileName.toString() != "Long Game Name.rom", "Windows short names unavailable")
+
+            assertCanonicalSource(root, original, alias)
+        }
+
+        private fun assertCanonicalSource(root: Path, original: Path, selection: Path) = runBlocking {
+            val directory = Files.createDirectory(root.resolve("destination"))
+            val manager = isolatedPromotionManager(root, operations = GameFileOperations(
+                createLink = { link, _ -> Files.writeString(link, "probe") },
+                copy = { source, destination, progress ->
+                    FileMover.copy(source, destination, progress)
+                    throw IOException("copy completion failed")
+                },
+            ))
+
+            val result = shouldThrow<IOException> { manager.promote(selection, directory) }
+            val record = PromotionIndex().read(directory).single()
+            val target = Files.list(directory).use { entries ->
+                entries.filter { it.fileName.toString() != ".gametier.json" }.toList().single()
+            }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "copy completion failed"
+                record.name shouldBe "Long Game Name.rom"
+                record.origin.toString() shouldBe original.toString()
+                target.fileName.toString() shouldBe "Long Game Name.rom"
+                Files.readString(target) shouldBe "retained"
+                Files.readString(original) shouldBe "retained"
+            }
+        }
+    }
+
+    @Nested
+    inner class ManagedSources {
+        @Test
+        fun `on an ancestor marker promotion stops before destination registration`() = withTestDirectory { root ->
+            runBlocking {
+                val managed = Files.createDirectory(root.resolve("managed"))
+                val marker = Files.writeString(managed.resolve(".gametier.json"), "malformed")
+                val original = Files.writeString(Files.createDirectories(managed.resolve("one/two")).resolve("game"), "retained")
+                val directory = Files.createDirectory(root.resolve("destination"))
+                val settings = DataStoreAppSettings(MemoryPreferencesStore())
+                val manager = isolatedPromotionManager(root, settings, GameFileOperations(createLink = { _, _ ->
+                    throw IOException("required privilege is not held")
+                }))
+
+                val result = shouldThrow<IOException> { manager.promote(original, directory) }
+
+                assertSoftly {
+                    result.message.orEmpty() shouldContain marker.toString()
+                    settings.promotionFolders.first() shouldBe emptySet()
+                    Files.list(directory).use { it.count() } shouldBe 0L
+                    Files.exists(root.resolve("backups")) shouldBe false
+                    Files.readString(original) shouldBe "retained"
+                    Files.readString(marker) shouldBe "malformed"
+                }
+            }
+        }
+    }
+
     @Nested
     @Tag("symlink-success")
     inner class ProtectedTransfers {

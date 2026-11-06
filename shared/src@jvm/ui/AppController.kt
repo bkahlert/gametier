@@ -184,8 +184,10 @@ class AppController internal constructor(
     }
 
     fun removeReviewItem(original: Path) = action {
+        val sources = state.value.review?.items?.filter { it.original == original }?.map { it.source }.orEmpty()
+        restoredDirectories = restoredDirectories.filterKeys { it != original && it !in sources }
         edit { current -> current.copy(
-            pendingSelection = current.pendingSelection.filterNot { it == original },
+            pendingSelection = current.pendingSelection.filterNot { it == original || it in sources },
             review = current.review?.let { review -> review.copy(items = review.items.filterNot { it.original == original }) },
         ) }
         if (state.value.pendingSelection.isEmpty()) clearReview()
@@ -199,7 +201,7 @@ class AppController internal constructor(
         if (!reviewPresentation(review).canConfirm) return@action
         if (!defaultLoaded || !rememberedLoaded || !state.value.inventoryLoaded || state.value.preparing || review.problem != null || state.value.savingSettings) return@action
         val requests = review.items.filter { it.status == ReviewStatus.READY }.mapNotNull { item ->
-            item.destination?.let { TransferRequest(TransferKind.PROMOTE, item.original, it.parent, it) }
+            item.destination?.let { TransferRequest(TransferKind.PROMOTE, item.source, it.parent, it) }
         }
         clearReview()
         requests.forEach(::enqueue)
@@ -347,10 +349,10 @@ class AppController internal constructor(
                 val review = combineReviews(prepared.map { it.second })
                 if (currentGeneration == generation) {
                     if (destinations.isNotEmpty()) restoredDirectories = prepared.flatMap { (targetDirectory, result) ->
-                        result.items.map { it.original to requireNotNull(targetDirectory) }
+                        result.items.map { it.source to requireNotNull(targetDirectory) }
                     }.toMap()
                     selectionAdjustments = (selectionAdjustments + review.adjustments).distinct()
-                    edit { it.copy(review = review.copy(adjustments = selectionAdjustments), pendingSelection = review.items.map { item -> item.original }) }
+                    edit { it.copy(review = review.copy(adjustments = selectionAdjustments), pendingSelection = review.items.map { item -> item.source }) }
                 }
             } catch (error: Exception) {
                 error.rethrowCancellation()

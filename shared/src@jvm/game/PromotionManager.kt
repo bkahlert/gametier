@@ -5,6 +5,7 @@ import com.bkahlert.gametier.files.FileTreeSnapshot
 import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.settings.AppSettings
+import com.bkahlert.gametier.settings.appSettingsFile
 import com.bkahlert.gametier.settings.getAppSettings
 import java.io.IOException
 import java.nio.file.Files
@@ -27,9 +28,12 @@ class PromotionManager internal constructor(
     private val operations: GameFileOperations,
     private val index: PromotionIndex,
     private val backups: BackupStore = BackupStore(),
+    private val transferLock: TransferLock? = null,
 ) {
     constructor(settings: AppSettings = getAppSettings(), backups: BackupStore = BackupStore()) :
-        this(settings, GameFileOperations(), PromotionIndex(), backups)
+        this(settings, GameFileOperations(), PromotionIndex(), backups, TransferLock(
+            appSettingsFile(System.getenv("LOCALAPPDATA"), System.getProperty("gametier.localAppData"))
+                .resolveSibling("transfers.lock")))
 
     suspend fun registerDirectory(directory: Path) {
         serialized { register(directory) }
@@ -73,7 +77,8 @@ class PromotionManager internal constructor(
 
     suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit): Unit = serialized {
         onProgress(TransferProgress(TransferPhase.PREPARING))
-        val origin = canonicalGameEntry(original)
+        PromotionEligibility.check(original)?.let { throw IOException(it) }
+        val origin = canonicalGameEntry(original).toRealPath()
         requireOrdinaryParents(origin.parent)
         val root = register(directory)
         val target = root.resolve(origin.fileName.toString())
@@ -257,7 +262,9 @@ class PromotionManager internal constructor(
     }
 
     private suspend fun <T> serialized(action: suspend () -> T): T = withContext(Dispatchers.IO) {
-        processMutex.withLock { action() }
+        processMutex.withLock {
+            if (transferLock == null) action() else transferLock.withLock(action)
+        }
     }
 
     private companion object { val processMutex = Mutex() }

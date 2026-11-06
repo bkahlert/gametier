@@ -5,6 +5,7 @@ import com.bkahlert.gametier.game.DestinationInventory
 import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.PROMOTION_INDEX_NAME
 import com.bkahlert.gametier.game.PromotionInventory
+import com.bkahlert.gametier.game.PromotionEligibility
 import com.bkahlert.gametier.game.canonicalGameEntry
 import com.bkahlert.gametier.game.gameEntryExists
 import com.bkahlert.gametier.game.isRealGameEntry
@@ -29,7 +30,9 @@ class FileSelectionPreparer : SelectionPreparer {
         val unique = linkedMapOf<Path, Selection>()
         paths.forEach { path ->
             val selection = selection(path)
-            if (unique.putIfAbsent(selection.original, selection) != null) {
+            val existing = unique.putIfAbsent(selection.original, selection)
+            if (existing != null) {
+                if (existing.problem == null && selection.problem != null) unique[selection.original] = selection
                 adjustments += "Removed duplicate selection: $path"
             }
         }
@@ -49,7 +52,7 @@ class FileSelectionPreparer : SelectionPreparer {
         val prepared = selections.mapIndexed { index, selection ->
             val original = selection.original
             val target = targets[index]
-            fun item(status: ReviewStatus, message: String) = ReviewItem(original, target, status, message)
+            fun item(status: ReviewStatus, message: String) = ReviewItem(original, target, status, message, selection.source)
             when {
                 indexed.any { (origin, data) -> original == origin || original.startsWith(data) } ->
                     item(ReviewStatus.SKIPPED, "Already indexed; inspect the existing promotion for its condition")
@@ -85,11 +88,12 @@ class FileSelectionPreparer : SelectionPreparer {
     }
 }
 
-private data class Selection(val original: Path, val directory: Boolean, val problem: String? = null)
+private data class Selection(val original: Path, val directory: Boolean, val problem: String? = null, val source: Path = original)
 
 private fun selection(path: Path): Selection = try {
     val original = entryIdentity(path)
-    Selection(original, isRealGameEntry(original) && Files.isDirectory(original, NOFOLLOW_LINKS))
+    Selection(original, isRealGameEntry(original) && Files.isDirectory(original, NOFOLLOW_LINKS),
+        PromotionEligibility.check(path), path.toAbsolutePath().normalize())
 } catch (error: Exception) {
     Selection(path.toAbsolutePath().normalize(), false, error.description())
 }

@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.bkahlert.gametier.settings.ExplorerIntegration
 
 @Composable
 fun App(
@@ -28,6 +29,7 @@ fun App(
     onChooseDefaultDirectory: () -> Unit,
     modifier: Modifier = Modifier,
     isDragging: Boolean = false,
+    explorerIntegration: ExplorerIntegration? = null,
 ) {
     val state by controller.state.collectAsState()
     var details by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -39,7 +41,7 @@ fun App(
                 Column(Modifier.fillMaxSize()) {
                     when (state.screen) {
                         AppScreen.PROMOTIONS -> PromotionScreen(state, controller, onChooseFiles, onChooseFolders, showDetails, Modifier.weight(1f))
-                        AppScreen.SETTINGS -> SettingsScreen(state, controller, onChooseDefaultDirectory, showDetails, Modifier.weight(1f))
+                        AppScreen.SETTINGS -> SettingsScreen(state, controller, onChooseDefaultDirectory, showDetails, Modifier.weight(1f), explorerIntegration)
                     }
                     ActivityPanel(state, controller, showDetails, maxContentHeight = activityHeight)
                 }

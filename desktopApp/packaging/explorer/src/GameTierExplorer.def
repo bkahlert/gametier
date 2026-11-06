@@ -1,0 +1,4 @@
+LIBRARY GameTierExplorer
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

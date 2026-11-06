@@ -10,6 +10,7 @@ data class ReviewItem(
     val destination: Path?,
     val status: ReviewStatus,
     val message: String,
+    val source: Path = original,
 )
 
 data class SelectionReview(

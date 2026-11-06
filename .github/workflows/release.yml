@@ -27,6 +27,14 @@ jobs:
           distribution: temurin
           java-version: '25'
           architecture: x64
+      - name: Build Explorer command
+        shell: pwsh
+        run: |
+          cmake -S desktopApp/packaging/explorer -B build/explorer -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/explorer --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/explorer -C Release --output-on-failure
       - name: Test
         shell: cmd
         run: kotlin.bat test
@@ -36,24 +44,7 @@ jobs:
       - name: Package Windows installer
         shell: pwsh
         run: |
-          $inputDirectory = 'build/tasks/_desktopApp_stageInstaller@packaging'
-          Copy-Item LICENSE $inputDirectory
-          jpackage `
-            --type msi `
-            --name GameTier `
-            --app-version $env:APP_VERSION `
-            --vendor 'Björn Kahlert' `
-            --description 'Move games between storage tiers while preserving their original paths.' `
-            --input $inputDirectory `
-            --main-jar GameTier.jar `
-            --main-class com.bkahlert.gametier.MainKt `
-            --dest build/release `
-            --icon desktopApp/packaging/GameTier.ico `
-            --license-file LICENSE `
-            --java-options '--enable-native-access=ALL-UNNAMED' `
-            --win-per-user-install `
-            --win-menu `
-            --win-upgrade-uuid 9db43bc2-4812-4649-a1a0-66489bdf19c0
+          ./desktopApp/packaging/installer/Build-Installer.ps1 -AppVersion $env:APP_VERSION
       - name: Publish GitHub Release
         shell: pwsh
         env:

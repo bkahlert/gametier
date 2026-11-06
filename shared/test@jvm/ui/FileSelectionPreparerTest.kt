@@ -123,6 +123,134 @@ class FileSelectionPreparerTest {
     }
 
     @Nested
+    inner class ManagedSources {
+        @Test
+        fun `on backup contents review blocks before any destination changes`() = withSelection { root, directory ->
+            val game = Files.writeString(Files.createDirectories(root.resolve(".gametier/backups/game")).resolve("data"), "snapshot")
+
+            val result = prepare(listOf(game), directory)
+
+            assertSoftly {
+                result.items.single().status shouldBe ReviewStatus.BLOCKED
+                result.items.single().message shouldContain "backup storage"
+                Files.list(directory).use { it.count() } shouldBe 0L
+                Files.readString(game) shouldBe "snapshot"
+            }
+        }
+
+        @Test
+        fun `on an unknown selected destination folder its marker blocks review`() = withSelection { root, directory ->
+            val game = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(game.resolve(".gametier.json"), "malformed")
+
+            val result = prepare(listOf(game), directory)
+
+            assertSoftly {
+                result.items.single().status shouldBe ReviewStatus.BLOCKED
+                result.items.single().message shouldContain marker.toString()
+                Files.readString(marker) shouldBe "malformed"
+                Files.list(directory).use { it.count() } shouldBe 0L
+            }
+        }
+
+        @Test
+        fun `on an unknown managed parent its child is blocked`() = withSelection { root, directory ->
+            val managed = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(managed.resolve(".gametier.json"), "{}")
+            val game = Files.writeString(managed.resolve("game"), "retained")
+
+            val result = prepare(listOf(game), directory)
+
+            result.items.single().status shouldBe ReviewStatus.BLOCKED
+            result.items.single().message shouldContain marker.toString()
+            Files.readString(game) shouldBe "retained"
+        }
+
+        @Test
+        fun `on a distant unknown managed ancestor its descendant is blocked`() = withSelection { root, directory ->
+            val managed = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(managed.resolve(".gametier.json"), "malformed")
+            val game = Files.writeString(Files.createDirectories(managed.resolve("one/two/three")).resolve("game"), "retained")
+
+            val result = prepare(listOf(game), directory)
+
+            result.items.single().status shouldBe ReviewStatus.BLOCKED
+            result.items.single().message shouldContain marker.toString()
+            Files.readString(game) shouldBe "retained"
+        }
+
+        @Test
+        fun `on a parent alias managed physical ancestry still blocks review`() = withSelection { root, directory ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val managed = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(managed.resolve(".gametier.json"), "malformed")
+            val parent = Files.createDirectory(managed.resolve("parent"))
+            val game = Files.writeString(parent.resolve("game"), "retained")
+            val alias = root.resolve("alias")
+            createTestJunction(alias, parent)
+
+            val result = prepare(listOf(alias.resolve("game")), directory)
+
+            result.items.single().status shouldBe ReviewStatus.BLOCKED
+            result.items.single().message shouldContain marker.toString()
+            Files.readString(game) shouldBe "retained"
+        }
+
+        @Test
+        fun `on an alias inside a managed folder lexical ancestry still blocks review`() = withSelection { root, directory ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val managed = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(managed.resolve(".gametier.json"), "malformed")
+            val ordinary = Files.createDirectory(root.resolve("ordinary"))
+            val game = Files.writeString(ordinary.resolve("game"), "retained")
+            val alias = managed.resolve("alias")
+            createTestJunction(alias, ordinary)
+
+            val result = prepare(listOf(alias.resolve("game")), directory)
+
+            result.items.single().status shouldBe ReviewStatus.BLOCKED
+            result.items.single().message shouldContain marker.toString()
+            Files.readString(game) shouldBe "retained"
+        }
+
+        @Test
+        fun `on unavailable symlink creation review remains ready`() = withTestDirectory { root ->
+            val directory = Files.createDirectory(root.resolve("destination"))
+            withTestArchive(root) { archive ->
+                val game = Files.writeString(archive.resolve("game"), "retained")
+                shouldThrow<UnsupportedOperationException> { Files.createSymbolicLink(archive.resolve("probe"), game) }
+
+                val result = prepare(listOf(game), directory)
+
+                assertSoftly {
+                    result.items.single().status shouldBe ReviewStatus.READY
+                    Files.readString(game) shouldBe "retained"
+                    Files.exists(archive.resolve("probe")) shouldBe false
+                    Files.list(directory).use { it.count() } shouldBe 0L
+                }
+            }
+        }
+
+        @Test
+        fun `on duplicate aliases a managed selection cannot disappear during deduplication`() = withSelection { root, directory ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val managed = Files.createDirectory(root.resolve("managed"))
+            val marker = Files.writeString(managed.resolve(".gametier.json"), "malformed")
+            val ordinary = Files.createDirectory(root.resolve("ordinary"))
+            val game = Files.writeString(ordinary.resolve("game"), "retained")
+            val alias = managed.resolve("alias")
+            createTestJunction(alias, ordinary)
+
+            val result = prepare(listOf(game, alias.resolve("game")), directory)
+
+            result.items.single().status shouldBe ReviewStatus.BLOCKED
+            result.items.single().message shouldContain marker.toString()
+            result.adjustments shouldHaveSize 1
+            Files.readString(game) shouldBe "retained"
+        }
+    }
+
+    @Nested
     inner class Sources {
         @Test
         fun `on missing originals each failure retains its path and other selections remain ready`() = withSelection { root, directory ->
