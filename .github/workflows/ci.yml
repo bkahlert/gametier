@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows build and test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        shell: cmd
+        run: kotlin.bat build
+      - name: Test
+        shell: cmd
+        run: kotlin.bat test
