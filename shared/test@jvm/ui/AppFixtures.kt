@@ -37,6 +37,9 @@ internal class AppTestOperations : PromotionOperations {
     var health: suspend (Path) -> String? = { null }
     val started = mutableListOf<TransferRequest>()
     var inventoryCalls = 0
+    override suspend fun findPromotion(selection: Path) = snapshot.flatMap { it.promotions }.singleOrNull {
+        selection == it.original || selection.startsWith(it.destination) || it.backup?.parent?.let(selection::startsWith) == true
+    }
     override suspend fun inventory(): List<DestinationInventory> {
         inventoryCalls++
         inventoryGate?.await()

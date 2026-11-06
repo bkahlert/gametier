@@ -2,13 +2,17 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <pathcch.h>
+#include <winioctl.h>
 
 #include <atomic>
 #include <filesystem>
 #include <memory>
 #include <new>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
+#include "../third_party/nlohmann/json.hpp"
 
 namespace {
 constexpr GUID commandId{0x9b6ed281, 0x384a, 0x4dbf, {0x98, 0xc0, 0xd2, 0x6b, 0x6d, 0x41, 0xb3, 0x52}};
@@ -84,16 +88,15 @@ bool unmanagedAncestors(std::filesystem::path ancestor) {
     return false;
 }
 
-bool eligible(IShellItemArray* items, std::filesystem::path& selected) {
-    if (items == nullptr || !integrationEnabled()) return false;
+#include "ManagedSelection.h"
+
+bool selectionPath(IShellItemArray* items, std::filesystem::path& selected) {
+    if (items == nullptr) return false;
     DWORD count = 0;
     if (FAILED(items->GetCount(&count)) || count != 1) return false;
     IShellItem* rawItem = nullptr;
     if (FAILED(items->GetItemAt(0, &rawItem)) || rawItem == nullptr) return false;
     std::unique_ptr<IShellItem, Release<IShellItem>> item(rawItem);
-    SFGAOF attributes = 0;
-    if (FAILED(item->GetAttributes(SFGAO_FILESYSTEM | SFGAO_LINK, &attributes)) ||
-        (attributes & SFGAO_FILESYSTEM) == 0 || (attributes & SFGAO_LINK) != 0) return false;
     PWSTR rawPath = nullptr;
     if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &rawPath)) || rawPath == nullptr) return false;
     const std::unique_ptr<wchar_t, TaskMemFree> pathString(rawPath);
@@ -104,15 +107,29 @@ bool eligible(IShellItemArray* items, std::filesystem::path& selected) {
     }
     selected = selected.lexically_normal();
     if (selected.filename().empty() && selected != selected.root_path()) selected = selected.parent_path();
-    if (PathCchIsRoot(selected.c_str())) return false;
+    return !PathCchIsRoot(selected.c_str()) && safePath(selected);
+}
+
+Action availableAction(IShellItemArray* items, std::filesystem::path& selected) {
+    if (!integrationEnabled() || !selectionPath(items, selected)) return Action::None;
+    IShellItem* rawItem = nullptr;
+    if (FAILED(items->GetItemAt(0, &rawItem)) || rawItem == nullptr) return Action::None;
+    std::unique_ptr<IShellItem, Release<IShellItem>> item(rawItem);
+    SFGAOF attributes = 0;
+    if (FAILED(item->GetAttributes(SFGAO_FILESYSTEM | SFGAO_LINK, &attributes)) ||
+        (attributes & SFGAO_FILESYSTEM) == 0) return Action::None;
+    const auto managed = managedSelection(selected);
+    if (managed.managed) return managed.action;
     DWORD fileAttributes = 0;
     std::filesystem::path canonical;
-    if (!metadata(selected, fileAttributes, &canonical) || !canonical.is_absolute() || PathCchIsRoot(canonical.c_str())) return false;
+    if (!metadata(selected, fileAttributes, &canonical) || !canonical.is_absolute() || PathCchIsRoot(canonical.c_str())) return Action::None;
     const auto directory = (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     const auto lexicalAncestor = directory ? selected : selected.parent_path();
     const auto canonicalAncestor = directory ? canonical : canonical.parent_path();
+    const auto resolved = managedSelection(canonical);
+    if (resolved.managed || (attributes & SFGAO_LINK) != 0) return Action::None;
     return unmanagedAncestors(lexicalAncestor) &&
-        (canonicalAncestor == lexicalAncestor || unmanagedAncestors(canonicalAncestor));
+        (canonicalAncestor == lexicalAncestor || unmanagedAncestors(canonicalAncestor)) ? Action::Promote : Action::None;
 }
 
 std::filesystem::path applicationPath() {
@@ -141,6 +158,24 @@ std::wstring quoteArgument(const std::wstring& argument) {
 
 class ExplorerCommand final : public IExplorerCommand {
     std::atomic<ULONG> references_{1};
+    bool presented_ = false;
+    Action presentedAction_ = Action::None;
+    std::filesystem::path presentedSelection_;
+    bool resolved_ = false;
+    Action resolvedAction_ = Action::None;
+    std::filesystem::path resolvedSelection_;
+
+    void resolve(Action action, const std::filesystem::path& selection) {
+        resolvedSelection_ = selection;
+        resolvedAction_ = action;
+        resolved_ = true;
+    }
+
+    void present(Action action, const std::filesystem::path& selection) {
+        presentedSelection_ = selection;
+        presentedAction_ = action;
+        presented_ = true;
+    }
 public:
     ExplorerCommand() noexcept { ++objects; }
     ~ExplorerCommand() { --objects; }
@@ -161,9 +196,28 @@ public:
         return remaining;
     }
 
-    IFACEMETHODIMP GetTitle(IShellItemArray*, PWSTR* output) override {
+    IFACEMETHODIMP GetTitle(IShellItemArray* items, PWSTR* output) override {
         if (output == nullptr) return E_POINTER;
-        return SHStrDupW(L"Promote with GameTier", output);
+        *output = nullptr;
+        try {
+            if (items == nullptr) return SHStrDupW(L"Promote with GameTier", output);
+            std::filesystem::path selected;
+            if (!selectionPath(items, selected)) return E_FAIL;
+            Action action;
+            if (resolved_ && samePath(selected, resolvedSelection_)) action = resolvedAction_;
+            else {
+                if (!localInspectionAllowed(selected)) {
+                    presented_ = false;
+                    return SHStrDupW(L"GameTier", output);
+                }
+                action = availableAction(items, selected);
+                resolve(action, selected);
+            }
+            present(action, selected);
+            if (action == Action::None) return E_FAIL;
+            return SHStrDupW(action == Action::Demote ? L"Demote with GameTier" :
+                action == Action::RestoreBackup ? L"Restore backup with GameTier" : L"Promote with GameTier", output);
+        } catch (...) { return E_FAIL; }
     }
 
     IFACEMETHODIMP GetIcon(IShellItemArray*, PWSTR* output) override {
@@ -176,9 +230,19 @@ public:
         } catch (...) { return E_OUTOFMEMORY; }
     }
 
-    IFACEMETHODIMP GetToolTip(IShellItemArray*, PWSTR* output) override {
+    IFACEMETHODIMP GetToolTip(IShellItemArray* items, PWSTR* output) override {
         if (output == nullptr) return E_POINTER;
-        return SHStrDupW(L"Review promotion to your game drive", output);
+        *output = nullptr;
+        try {
+            if (items == nullptr) return SHStrDupW(L"Review promotion to your game drive", output);
+            std::filesystem::path selected;
+            if (!selectionPath(items, selected)) return E_FAIL;
+            const auto action = presented_ && samePath(selected, presentedSelection_) ? presentedAction_ :
+                resolved_ && samePath(selected, resolvedSelection_) ? resolvedAction_ : Action::None;
+            if (action == Action::None) return SHStrDupW(L"Review this game with GameTier", output);
+            return SHStrDupW(action == Action::Demote ? L"Review returning this game to its original location" :
+                action == Action::RestoreBackup ? L"Review restoring this game's source backup" : L"Review promotion to your game drive", output);
+        } catch (...) { return E_FAIL; }
     }
 
     IFACEMETHODIMP GetCanonicalName(GUID* output) override {
@@ -193,7 +257,9 @@ public:
         if (!okToBeSlow) return E_PENDING;
         try {
             std::filesystem::path selected;
-            if (eligible(items, selected)) *output = ECS_ENABLED;
+            const auto action = availableAction(items, selected);
+            resolve(action, selected);
+            if (action != Action::None) *output = ECS_ENABLED;
         } catch (...) { /* Unknown metadata or allocation errors leave the command hidden. */ }
         return S_OK;
     }
@@ -201,10 +267,16 @@ public:
     IFACEMETHODIMP Invoke(IShellItemArray* items, IBindCtx*) override {
         try {
             std::filesystem::path selected;
-            if (!eligible(items, selected)) return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            const auto action = availableAction(items, selected);
+            if (action == Action::None) return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            if (presented_ && (action != presentedAction_ || !samePath(selected, presentedSelection_)))
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
+            if (!presented_ && resolved_ && (action != resolvedAction_ || !samePath(selected, resolvedSelection_)))
+                return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED);
             const auto application = applicationPath();
             if (application.empty()) return E_FAIL;
-            auto arguments = quoteArgument(application.native()) + L" --promote " + quoteArgument(selected.native());
+            const auto verb = action == Action::Demote ? L" --demote " : action == Action::RestoreBackup ? L" --restore-backup " : L" --promote ";
+            auto arguments = quoteArgument(application.native()) + verb + quoteArgument(selected.native());
             STARTUPINFOW startup{};
             startup.cb = sizeof(startup);
             PROCESS_INFORMATION process{};
@@ -214,7 +286,7 @@ public:
             CloseHandle(process.hProcess);
             return S_OK;
         } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
-        catch (...) { return E_FAIL; }
+        catch (...) { return HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED); }
     }
 
     IFACEMETHODIMP GetFlags(EXPCMDFLAGS* output) override {

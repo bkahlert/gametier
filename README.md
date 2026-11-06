@@ -32,6 +32,9 @@ Current releases are unsigned, so Windows may show a publisher warning.
 
 You can also right-click one file or folder and choose **Promote with GameTier**
 (Windows 11: **Show more options**). Turn this option off in **Settings**.
+Right-click a managed game link, its promoted files, or its backup folder to
+choose **Demote with GameTier**. Selecting an item inside returns the whole game.
+When only the snapshot remains, the menu offers **Restore backup with GameTier**.
 
 ![Reviewing promotion of a game to an SSD drive](docs/screenshots/review.png)
 

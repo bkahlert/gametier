@@ -30,6 +30,10 @@ try {
     $database = $windowsInstaller.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $windowsInstaller,
         @((Resolve-Path -LiteralPath $Installer).Path, 0))
     $files = Read-Rows $database 'SELECT `FileName`, `FileSize`, `Component_` FROM `File`' 3
+    $notice = @($files | Where-Object { ($_[0] -split '\|')[-1] -ceq 'GameTierExplorer.LICENSE.txt' })
+    Assert-Count $notice 1 'Explorer dependency license payload'
+    $noticeSource = Join-Path $PSScriptRoot '../explorer/third_party/nlohmann/LICENSE.MIT'
+    if ([long]$notice[0][1] -ne (Get-Item -LiteralPath $noticeSource).Length) { throw 'Explorer dependency license differs from the vendored license.' }
     $library = @($files | Where-Object { ($_[0] -split '\|')[-1] -ceq 'GameTierExplorer.dll' })
     $launcher = @($files | Where-Object { ($_[0] -split '\|')[-1] -ceq 'GameTier.exe' })
     Assert-Count $library 1 'Explorer DLL payload'

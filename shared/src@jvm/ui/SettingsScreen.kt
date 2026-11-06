@@ -103,7 +103,7 @@ private fun ExplorerIntegrationSetting(integration: ExplorerIntegration) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("Promote from File Explorer", style = MaterialTheme.typography.titleSmall)
+                Text("GameTier in File Explorer", style = MaterialTheme.typography.titleSmall)
                 Switch(checked = enabled, enabled = !busy, onCheckedChange = { value ->
                     busy = true
                     error = null
@@ -116,7 +116,7 @@ private fun ExplorerIntegrationSetting(integration: ExplorerIntegration) {
                     }
                 })
             }
-            Text("Show “Promote with GameTier” for eligible files and folders.", style = MaterialTheme.typography.bodySmall,
+            Text("Show promotion, demotion, and backup recovery actions for eligible files and folders.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let { Text(it.message ?: "Explorer integration could not be changed.", color = MaterialTheme.colorScheme.error) }
         }

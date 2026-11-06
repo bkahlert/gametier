@@ -13,6 +13,29 @@ import kotlin.test.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PromotionLaunchTest {
     @Test
+    fun `on demotion or recovery startup the selected path is retained`() {
+        val path = appPath("Games 雪/Some Game/save.dat")
+
+        val result = listOf("--demote", "--restore-backup").map { argument ->
+            PromotionLaunch.parse(arrayOf(argument, path.toString()))
+        }
+
+        result.map { it?.original } shouldBe listOf(path, path)
+    }
+
+    @Test
+    fun `on malformed demotion or recovery arguments no partial request is accepted`() {
+        listOf("--demote", "--restore-backup").forEach { argument ->
+            listOf(arrayOf(argument), arrayOf(argument, "relative"), arrayOf(argument, ""),
+                arrayOf(argument, appPath("game").root.toString()),
+                arrayOf(argument, appPath("one").toString(), appPath("two").toString()),
+                arrayOf(argument, "bad\u0000path")).forEach { arguments ->
+                shouldThrow<IllegalArgumentException> { PromotionLaunch.parse(arguments) }
+            }
+        }
+    }
+
+    @Test
     fun `on an explorer selection the absolute path retains spaces and unicode`() {
         val path = appPath("Games 雪/Some Game.rom")
 
