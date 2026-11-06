@@ -2,7 +2,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
+#include <string>
 
 namespace fs = std::filesystem;
 

@@ -103,6 +103,7 @@ try {
     $installed = $UpgradeInstaller
     Assert-Registration $installDirectory
     Assert-Equal (Get-FileHash -LiteralPath $settings).Hash $settingsHash 'Staged default promotion folder and history after upgrade'
+    Assert-Equal (Test-Path -LiteralPath $legacySettings) $false 'Legacy preferences removed with old installation'
     $classPath = Join-Path $installDirectory 'app/*'
     & javac.exe -cp $classPath -d $fixture (Join-Path $PSScriptRoot 'fixtures/MigrateInstalledSettings.java')
     if ($LASTEXITCODE -ne 0) { throw 'Installed settings migration fixture did not compile.' }
