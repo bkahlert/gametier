@@ -51,8 +51,32 @@ The Windows backend stores per-user settings in
 `%LOCALAPPDATA%\GameTier\settings.preferences_pb`. It accepts native absolute paths
 without requiring an available drive or existing folder and preserves their text.
 Invalid paths and storage errors are reported; successful writes are persisted.
-Use one running GameTier process at a time. UI and settings integration with
-promotion follow separately.
+Use one running GameTier process at a time. `promotionFolders: Flow<Set<String>>`
+contains explicitly remembered destinations; default changes leave that history
+unchanged. `rememberPromotionFolder(path)` persists a destination independently.
+
+### Promotion inventory
+
+`PromotionManager` coordinates transfers with a hidden `.gametier.json` in each
+destination directory. Use suspending `promote(original, directory)` to move a
+game into a direct child named after the original, and `demote(directory, name)`
+to return an indexed promotion. `registerDirectory(directory)` initializes a new
+destination or validates an existing index. Used directories are remembered in
+settings. The original transfer primitives remain independently usable.
+
+`inventory()` returns snapshots for remembered destinations and the current
+default, including validated promotions, entries needing attention, and
+unrecognized direct children. Contents inside a promoted directory belong to
+that promotion. Missing/damaged indexes and unavailable destinations are reported
+explicitly. Existing promotions made without the manager are reported as
+unrecognized; there is no automatic adoption, cleanup, or repair.
+
+The manager performs blocking work on the I/O dispatcher and serializes its
+operations across instances in this process. It persists intent before moving
+game data and commits completion afterward. Failed/interrupted transfers retain
+their intent for inspection, including when the transfer succeeded but its final
+index update failed. Lost indexes on remembered destinations are never reset
+silently. UI wiring follows separately.
 
 ### Filesystem components
 
