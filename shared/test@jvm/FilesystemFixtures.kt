@@ -12,7 +12,7 @@ internal fun withTestDirectory(parent: Path? = null, action: (Path) -> Unit) {
     val root = if (parent == null) Files.createTempDirectory("gametier-test-")
         else Files.createTempDirectory(parent.toAbsolutePath(), "gametier-test-")
     try {
-        action(root)
+        action(root.toRealPath())
     } finally {
         deleteTestFixture(root)
     }
@@ -71,7 +71,7 @@ internal fun assertTestTree(path: Path) {
     Files.readString(path.resolve("game.dat")) shouldBe "game data"
     Files.readString(path.resolve("nested").resolve("config.ini")) shouldBe "settings"
     Files.isDirectory(path.resolve("nested").resolve("empty")) shouldBe true
-    Files.walk(path).use { it.count() } shouldBe 5L
+    Files.walk(path.toRealPath()).use { it.count() } shouldBe 5L
 }
 
 internal fun createTestJunction(link: Path, target: Path) {

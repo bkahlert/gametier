@@ -37,8 +37,8 @@ The Windows backend stores per-user settings in
 `%LOCALAPPDATA%\GameTier\settings.preferences_pb`. It accepts native absolute paths
 without requiring an available drive or existing folder and preserves their text.
 Invalid paths and storage errors are reported; successful writes are persisted.
-Use one running GameTier process at a time. UI and promotion integration follow
-separately.
+Use one running GameTier process at a time. UI and settings integration with
+promotion follow separately.
 
 ### Filesystem components
 
@@ -63,8 +63,24 @@ be a link, junction, special entry, or filesystem root. The link parent must exi
 occupied locations and directory links inside their targets are rejected. Target
 directory contents are not scanned. Failures throw a contextual `IOException`
 preserving the cause. The creator does not elevate privileges or fall back to
-junctions; Windows must permit symlink creation for the calling user. Moving and
-link creation remain separate operations.
+junctions; Windows must permit symlink creation for the calling user. The creator
+can also be used independently of game transfers.
+
+`Promoter.promote(original: Path, destination: Path)` moves a game file (such as
+a ROM) or directory to the complete destination path and leaves an absolute
+symlink at its original location. `Demoter.demote(original: Path)` replaces that
+symlink with its target. Demotion also accepts externally created symlinks with
+absolute or relative targets, but rejects dangling links, chains, and junctions.
+Both operations are blocking and support same-volume and cross-volume transfers.
+
+Promotion checks symlink support with a temporary sibling link before moving.
+Both operations validate before relocating data and attempt recovery when safe.
+Move failures preserve partial copies; ambiguous copies are never deleted or
+merged automatically. Failures report the phase and paths in an `IOException`,
+with the original cause and suppressed recovery errors. A failed preflight
+cleanup reports the leftover link. Inspect reported paths before retrying.
+Stop game writes and serialize operations on the same game. There is no crash
+recovery journal, automatic elevation, or progress/cancellation interface.
 
 Run ordinary tests on Windows with `.\kotlin.bat test -m shared`. Real NTFS/ReFS
 integration tests are opt-in:
@@ -109,7 +125,7 @@ semicolon-separated roots before running the shared tests.
 The reusable `scripts/TestVolumes.psm1` facility exports
 `Invoke-WithTestVolumes -Action { ... }`, with optional `-ExistingVolumes`.
 It provisions and cleans up fixtures around the action and restores
-`GAMETIER_TEST_VOLUMES` even on failure. Both integration suites share volume
+`GAMETIER_TEST_VOLUMES` even on failure. All filesystem suites share volume
 validation, pairings, and per-test directories in `TestVolumes.kt`.
 `Test-FileMoves.ps1` remains a compatibility entry point to the shared runner.
 
