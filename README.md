@@ -16,8 +16,6 @@ was at promotion. Snapshots live in
 
 ![GameTier listing two folder-based games and a ROM-based game](docs/screenshots/promotions.png)
 
-*Fictional demo games: Clockwork Vale (folder) and Starfall Circuit (ROM), moving from E: to C:.*
-
 ## Install
 
 [Download the latest Windows installer](https://github.com/bkahlert/gametier/releases/latest),
@@ -35,7 +33,7 @@ Current releases are unsigned, so Windows may show a publisher warning.
 You can also right-click one file or folder and choose **Promote with GameTier**
 (Windows 11: **Show more options**). Turn this option off in **Settings**.
 
-![Reviewing Starfall Circuit.rom on E: before moving it to C:](docs/screenshots/review.png)
+![Reviewing promotion of a game to an SSD drive](docs/screenshots/review.png)
 
 Use **Demote** to return the latest game files to their original location. With a
 source backup, the original drive needs temporary space for the returning files;
