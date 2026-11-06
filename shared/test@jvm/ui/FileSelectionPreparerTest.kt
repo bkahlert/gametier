@@ -24,6 +24,7 @@ import java.nio.file.attribute.AclEntry
 import java.nio.file.attribute.AclEntryPermission
 import java.nio.file.attribute.AclEntryType
 import java.nio.file.attribute.AclFileAttributeView
+import java.nio.file.attribute.DosFileAttributeView
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -438,6 +439,32 @@ class FileSelectionPreparerTest {
 
             result.items.single().status shouldBe ReviewStatus.READY
             Files.readAllBytes(directory.resolve(".gametier.json")).toList() shouldBe before
+        }
+
+        @Test
+        fun `on read-only metadata review blocks without changing the index`() = withSelection { root, directory ->
+            assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val original = Files.writeString(root.resolve("game"), "source")
+            PromotionIndex().write(directory, emptyList())
+            val index = directory.resolve(".gametier.json")
+            val before = Files.readAllBytes(index).toList()
+            val attributes = Files.getFileAttributeView(index, DosFileAttributeView::class.java)
+            attributes.setReadOnly(true)
+            try {
+                val result = prepare(listOf(original), directory, remembered = setOf(directory.toString()))
+
+                assertSoftly {
+                    result.items.single().status shouldBe ReviewStatus.BLOCKED
+                    result.problem.orEmpty() shouldContain "metadata"
+                    result.problem.orEmpty() shouldContain "writ"
+                    Files.readAllBytes(index).toList() shouldBe before
+                    attributes.readAttributes().isReadOnly shouldBe true
+                    Files.readString(original) shouldBe "source"
+                    Files.exists(directory.resolve("game")) shouldBe false
+                }
+            } finally {
+                attributes.setReadOnly(false)
+            }
         }
 
         @Test

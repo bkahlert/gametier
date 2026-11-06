@@ -111,7 +111,9 @@ private fun inspectDestination(directory: Path?, remembered: Set<String>): Revie
         if (!Files.isWritable(root)) throw IOException("Destination is not writable: $root")
         val inspected = PromotionInventory.inspect(root)
         val problem = when (inspected.status) {
-            DestinationStatus.AVAILABLE -> null
+            DestinationStatus.AVAILABLE -> if (!Files.isWritable(root.resolve(PROMOTION_INDEX_NAME))) {
+                "Destination metadata is not writable: $root"
+            } else null
             DestinationStatus.MISSING_INDEX -> if (remembered.any { path ->
                 try { directoryIdentity(directory.fileSystem.getPath(path)) == root } catch (_: Exception) { false }
             }) "Remembered destination has lost its promotion index: ${root.resolve(PROMOTION_INDEX_NAME)}" else null
