@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string] $AppVersion,
     [string] $InputDirectory = 'build/tasks/_desktopApp_stageInstaller@packaging',
     [string] $ExplorerLibrary = 'build/explorer/Release/GameTierExplorer.dll',
+    [string] $SettingsLibrary = 'build/explorer/installer/Release/GameTierInstaller.dll',
     [string] $Destination = 'build/release'
 )
 
@@ -10,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
 $InputDirectory = (Resolve-Path -LiteralPath $InputDirectory).Path
 $ExplorerLibrary = (Resolve-Path -LiteralPath $ExplorerLibrary).Path
+$SettingsLibrary = (Resolve-Path -LiteralPath $SettingsLibrary).Path
 if (-not (Test-Path -LiteralPath (Join-Path $InputDirectory 'GameTier.jar') -PathType Leaf)) {
     throw "Stage GameTier.jar before packaging: kotlin.bat do stageInstaller -m desktopApp"
 }
@@ -49,6 +51,16 @@ $integration = New-Object Xml.XmlDocument
 $integration.Load((Join-Path $PSScriptRoot 'ExplorerIntegration.wxi'))
 $fragment = $integration.DocumentElement.FirstChild
 $main.DocumentElement.AppendChild($main.ImportNode($fragment, $true)) | Out-Null
+$preservation = New-Object Xml.XmlDocument
+$preservation.Load((Join-Path $PSScriptRoot 'PreserveSettings.wxi'))
+$preservation.DocumentElement.SelectSingleNode('*/*[local-name()="Binary"]').SetAttribute('SourceFile', $SettingsLibrary)
+$product = $feature.ParentNode
+foreach ($element in $preservation.DocumentElement.FirstChild.ChildNodes) {
+    if ($element.LocalName -eq 'InstallExecuteSequence') {
+        $sequence = $product.SelectSingleNode('w:InstallExecuteSequence', $namespaces)
+        foreach ($action in $element.ChildNodes) { $sequence.AppendChild($main.ImportNode($action, $true)) | Out-Null }
+    } else { $product.AppendChild($main.ImportNode($element, $true)) | Out-Null }
+}
 $main.Save((Join-Path $resources 'main.wxs'))
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'LICENSE') -Destination $InputDirectory
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'desktopApp/packaging/explorer/third_party/nlohmann/LICENSE.MIT') `

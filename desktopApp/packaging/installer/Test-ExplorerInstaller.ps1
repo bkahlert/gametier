@@ -14,6 +14,11 @@ $registrationKeys = @(
 )
 $preferenceKey = 'Software\GameTier'
 $preferenceName = 'ExplorerIntegrationEnabled'
+$legacySettingsDirectory = Join-Path $env:LOCALAPPDATA 'GameTier'
+$settingsDirectory = Join-Path $env:LOCALAPPDATA 'GameTierData'
+foreach ($directory in @($legacySettingsDirectory, $settingsDirectory)) {
+    if (Test-Path -LiteralPath $directory) { throw "Installer lifecycle tests require absent user data: $directory" }
+}
 
 function Assert-Equal($Actual, $Expected, [string] $Description) {
     if ($Actual -cne $Expected) { throw "$Description expected '$Expected', got '$Actual'." }
@@ -75,7 +80,7 @@ try {
 } finally { if ($null -ne $key) { $key.Dispose() } }
 
 $fixture = Join-Path ([IO.Path]::GetTempPath()) "gametier-installer-$([guid]::NewGuid().ToString('N'))"
-$installDirectory = Join-Path $fixture 'GameTier'
+$installDirectory = $legacySettingsDirectory
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $installed = $null
 try {
@@ -89,9 +94,22 @@ try {
 
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($preferenceKey)
     try { $key.SetValue($preferenceName, 0, [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $key.Dispose() }
+    $legacySettings = Join-Path $legacySettingsDirectory 'settings.preferences_pb'
+    $settings = Join-Path $settingsDirectory 'legacy.preferences_pb'
+    $settingsBytes = [Convert]::FromBase64String((Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'fixtures/settings.preferences_pb.base64')).Trim())
+    [IO.File]::WriteAllBytes($legacySettings, $settingsBytes)
+    $settingsHash = (Get-FileHash -LiteralPath $legacySettings).Hash
     Invoke-Installer @('/i', "`"$((Resolve-Path -LiteralPath $UpgradeInstaller).Path)`"", "INSTALLDIR=`"$installDirectory`"") (Join-Path $fixture 'upgrade.log')
     $installed = $UpgradeInstaller
     Assert-Registration $installDirectory
+    Assert-Equal (Get-FileHash -LiteralPath $settings).Hash $settingsHash 'Staged default promotion folder and history after upgrade'
+    $classPath = Join-Path $installDirectory 'app/*'
+    & javac.exe -cp $classPath -d $fixture (Join-Path $PSScriptRoot 'fixtures/MigrateInstalledSettings.java')
+    if ($LASTEXITCODE -ne 0) { throw 'Installed settings migration fixture did not compile.' }
+    & java.exe --enable-native-access=ALL-UNNAMED -cp "$fixture;$classPath" MigrateInstalledSettings
+    if ($LASTEXITCODE -ne 0) { throw 'Installed settings migration failed.' }
+    $settings = Join-Path $settingsDirectory 'settings.preferences_pb'
+    Assert-Equal (Get-FileHash -LiteralPath $settings).Hash $settingsHash 'Default promotion folder and history on first launch'
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($preferenceKey)
     try {
         Assert-Equal $key.GetValue($preferenceName) 0 'Disabled preference after upgrade'
@@ -100,6 +118,7 @@ try {
 
     Invoke-Installer @('/x', "`"$((Resolve-Path -LiteralPath $installed).Path)`"") (Join-Path $fixture 'uninstall.log')
     $installed = $null
+    Assert-Equal (Get-FileHash -LiteralPath $settings).Hash $settingsHash 'Settings after uninstall'
     foreach ($path in $registrationKeys) {
         $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path)
         if ($null -ne $key) { $key.Dispose(); throw "Uninstall retained Explorer registration: $path" }

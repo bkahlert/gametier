@@ -10,7 +10,7 @@ actual fun getAppSettings(): AppSettings = processSettings
 
 private val processSettings: AppSettings by lazy {
     createJvmAppSettings(
-        appSettingsFile(System.getenv("LOCALAPPDATA"), System.getProperty("gametier.localAppData")),
+        appSettingsFile(System.getenv("LOCALAPPDATA"), System.getProperty("gametier.localAppData")).also(::migrateLegacyAppSettings),
         CoroutineScope(SupervisorJob() + Dispatchers.IO),
     )
 }
@@ -24,5 +24,5 @@ internal fun appSettingsFile(localAppData: String?, originalLocalAppData: String
     check(!localAppData.isNullOrBlank()) { "LOCALAPPDATA is unavailable" }
     val root = Path.of(localAppData)
     check(root.isAbsolute) { "LOCALAPPDATA must be an absolute path" }
-    return root.resolve("GameTier/settings.preferences_pb")
+    return root.resolve("GameTierData/settings.preferences_pb")
 }

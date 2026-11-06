@@ -14,7 +14,7 @@ class AppSettingsFileTest {
 
         val result = appSettingsFile(administrator.toString(), original.toString())
 
-        result shouldBe original.resolve("GameTier/settings.preferences_pb")
+        result shouldBe original.resolve("GameTierData/settings.preferences_pb")
     }
 
     @Test
@@ -23,7 +23,7 @@ class AppSettingsFileTest {
 
         val result = appSettingsFile(localAppData.toString())
 
-        result shouldBe localAppData.resolve("GameTier/settings.preferences_pb")
+        result shouldBe localAppData.resolve("GameTierData/settings.preferences_pb")
     }
 
     @Test

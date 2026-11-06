@@ -14,7 +14,7 @@ import kotlinx.coroutines.runBlocking
 
 internal fun <T> withLockedManagerProcess(root: Path, operation: String, action: (Path) -> T): T {
     val localAppData = root.resolve("Original user")
-    val file = Files.createDirectories(localAppData.resolve("GameTier")).resolve("transfers.lock")
+    val file = Files.createDirectories(localAppData.resolve("GameTierData")).resolve("transfers.lock")
     val classPath = (System.getProperty("java.class.path").split(File.pathSeparator) +
         generateSequence(Thread.currentThread().contextClassLoader) { it.parent }
             .filterIsInstance<URLClassLoader>().flatMap { it.urLs.asSequence() }.map { Path.of(it.toURI()).toString() })
