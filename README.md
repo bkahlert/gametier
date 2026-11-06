@@ -23,7 +23,7 @@ command line:
 
 Run the project's tests with `./kotlin test`, or `./kotlin test -m <module>` for a single module.
 
-### File moves
+### Filesystem components
 
 The JVM building block is `FileMover.move(source: Path, destination: Path)`.
 It renames within a volume, or copies files and directory trees across volumes,
@@ -33,23 +33,40 @@ Stop programs writing to the source before moving it.
 
 Normal timestamps and supported DOS attributes are retained; cross-volume
 permissions inherit from the destination. There is no custom ACL/SACL preservation,
-hashing, rollback, or link creation. Symbolic links, junctions, and other reparse
-points are rejected. This is not a lossless backup of every filesystem feature.
+hashing, or rollback. The mover rejects symbolic links, junctions, and other reparse
+points. This is not a lossless backup of every filesystem feature.
 Copy/verification failures retain the source and may leave a partial destination;
 cleanup failures leave the copied destination and possibly some source entries.
 Both failures throw a contextual `IOException`.
+
+`SymlinkCreator.create(link: Path, target: Path)` creates a file or directory
+symbolic link, including across drives. It stores an absolute target and accepts
+relative inputs and parent-directory aliases. The target must exist and must not
+be a link, junction, special entry, or filesystem root. The link parent must exist;
+occupied locations and directory links inside their targets are rejected. Target
+directory contents are not scanned. Failures throw a contextual `IOException`
+preserving the cause. The creator does not elevate privileges or fall back to
+junctions; Windows must permit symlink creation for the calling user. Moving and
+link creation remain separate operations.
 
 Run ordinary tests on Windows with `.\kotlin.bat test -m shared`. Real NTFS/ReFS
 integration tests are opt-in:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-FileMoves.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Filesystems.ps1
 ```
 
-Run this command **unelevated**. It requests UAC consent for setup and cleanup
-helpers, while tests run with your normal permissions. It creates two NTFS and two
+Run this command **unelevated**. It requests UAC consent for setup, cleanup, and a
+separate successful-symlink test phase. General tests, move tests, and symlink
+failure tests run with your normal permissions. Only tests tagged `symlink-success`
+run elevated; that phase requires symlink support and fails if creation is
+unavailable. No Developer Mode or user-rights settings are changed.
+The workflow creates two NTFS and two
 ReFS disposable VHDX images and covers NTFS-to-NTFS, NTFS-to-ReFS, ReFS-to-ReFS,
-ReFS-to-NTFS, same-volume moves, collisions, and locked-file failures. Cleanup is
+ReFS-to-NTFS, same-volume moves and symlinks, collisions, and move-specific
+locked-file failures. Each symlink volume/pairing has its own test result.
+When running ordinary tests directly, successful-symlink tests report an unmet
+prerequisite if the calling user cannot create symlinks. Cleanup is
 attempted even after failures; any leftover fixture directory is reported.
 Only newly created image disks are formatted; existing volumes are never formatted.
 
@@ -64,13 +81,20 @@ as an ordinary user; a UAC prompt cannot be answered noninteractively.
 To use four existing volumes instead, provide writable roots in that same order:
 
 ```powershell
-.\scripts\Test-FileMoves.ps1 -ExistingVolumes 'F:\tests','G:\tests','H:\tests','I:\tests'
+.\scripts\Test-Filesystems.ps1 -ExistingVolumes 'F:\tests','G:\tests','H:\tests','I:\tests'
 ```
 
 This mode creates and removes only uniquely named test directories within those
 roots. Tests validate that the roots refer to four distinct volumes with the
 expected filesystem types. Alternatively, set `GAMETIER_TEST_VOLUMES` to the four
 semicolon-separated roots before running the shared tests.
+
+The reusable `scripts/TestVolumes.psm1` facility exports
+`Invoke-WithTestVolumes -Action { ... }`, with optional `-ExistingVolumes`.
+It provisions and cleans up fixtures around the action and restores
+`GAMETIER_TEST_VOLUMES` even on failure. Both integration suites share volume
+validation, pairings, and per-test directories in `TestVolumes.kt`.
+`Test-FileMoves.ps1` remains a compatibility entry point to the shared runner.
 
 ---
 
