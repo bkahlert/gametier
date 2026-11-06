@@ -52,7 +52,7 @@ class SymlinkCreatorTest {
         }
 
         @Test
-        fun `on relative inputs normalized absolute targets are stored`() = withTestDirectory { root ->
+        fun `on relative inputs normalized absolute targets are stored`() = withTestDirectory(Path.of("")) { root ->
             requireSymlinkSupport(root)
             val target = Files.writeString(root.resolve("target"), "game data")
             val workingDirectory = Path.of("").toAbsolutePath()

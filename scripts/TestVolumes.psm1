@@ -27,11 +27,6 @@ function Invoke-WithTestVolumes {
     try {
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $userSid = $identity.User.Value
-        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-        if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-            throw 'Run this command from an unelevated shell so filesystem tests exercise ordinary user permissions.'
-        }
-
         if ($PSBoundParameters.ContainsKey('ExistingVolumes')) {
             if ($ExistingVolumes.Count -ne 4) { throw 'Supply four roots ordered NTFS1, NTFS2, ReFS1, ReFS2.' }
             $roots = $ExistingVolumes

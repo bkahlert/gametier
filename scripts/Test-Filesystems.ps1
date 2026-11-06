@@ -35,6 +35,11 @@ $volumeOptions = @{}
 if ($PSBoundParameters.ContainsKey('ExistingVolumes')) { $volumeOptions.ExistingVolumes = $ExistingVolumes }
 $project = Split-Path -Parent $PSScriptRoot
 try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Run this command from an unelevated shell so filesystem tests exercise ordinary user permissions.'
+    }
     Invoke-WithTestVolumes @volumeOptions -Action {
         & (Join-Path $project 'kotlin.bat') test -m shared "--project-dir=$project" '--exclude-tag=symlink-success'
         if ($LASTEXITCODE -ne 0) { throw "Filesystem tests failed (exit $LASTEXITCODE)." }

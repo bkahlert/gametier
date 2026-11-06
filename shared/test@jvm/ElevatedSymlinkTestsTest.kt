@@ -10,6 +10,7 @@ class ElevatedSymlinkTestsTest {
     @Test
     fun `on an unelevated invocation symlink test execution is refused`() = withTestDirectory { root ->
         assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+        assumeTrue(!isWindowsElevated, "Requires an unelevated process")
         val configuration = Files.writeString(root.resolve("configuration.json"), "{}")
 
         val result = runTestPowerShell(

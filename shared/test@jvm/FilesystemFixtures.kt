@@ -8,8 +8,9 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 
-internal fun withTestDirectory(action: (Path) -> Unit) {
-    val root = Files.createTempDirectory("gametier-test-")
+internal fun withTestDirectory(parent: Path? = null, action: (Path) -> Unit) {
+    val root = if (parent == null) Files.createTempDirectory("gametier-test-")
+        else Files.createTempDirectory(parent.toAbsolutePath(), "gametier-test-")
     try {
         action(root)
     } finally {
@@ -93,4 +94,15 @@ internal fun runTestPowerShell(vararg arguments: String): Pair<Int, String> {
     ).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().use { it.readText() }
     return process.waitFor() to output
+}
+
+internal val isWindowsElevated: Boolean by lazy {
+    val result = runTestPowerShell(
+        "-Command",
+        "\$identity = [Security.Principal.WindowsIdentity]::GetCurrent(); " +
+            "\$principal = New-Object Security.Principal.WindowsPrincipal(\$identity); " +
+            "\$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
+    )
+    check(result.first == 0) { result.second }
+    result.second.trim().lowercase().toBooleanStrict()
 }
