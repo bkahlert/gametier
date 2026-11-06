@@ -16,6 +16,7 @@
 ## Git
 
 - Never commit to `main` or `master`. Start each change on its own branch and merge via a pull request; delete the branch after merging.
+- Do not include AI attribution in commit messages, including AI coauthor trailers, generated-by lines, or assistant signatures. Preserve human attribution.
 - Name branches `<type>/<TICKET-ID>-<slug>`, omitting the ticket ID when none exists. Use a commit type below and a slug of two to five lowercase, hyphenated words.
 - Use Conventional Commits 1.0.0: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `perf`, `revert`, `refactor`, `docs`, `test`, `build`, `ci`, `style`, `chore`. Choose by user-visible effect; `feat` is minor, `fix`, `perf`, and `revert` are patch, and breaking changes are major. Other types do not appear in changelogs.
 - Use a reusable lowercase noun for the scope; omit it only for cross-cutting changes. Use an imperative, lowercase description without a final period; limit the header to 72 characters.
