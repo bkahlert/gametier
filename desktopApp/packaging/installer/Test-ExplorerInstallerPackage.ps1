@@ -73,5 +73,18 @@ try {
     $restartManagerShutdown = Read-Rows $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'MSIRMSHUTDOWN'" 1
     Assert-Count $restartManagerShutdown 1 'Upgrade force shutdown policy'
     if ($restartManagerShutdown[0][0] -cne '1') { throw "Upgrade force shutdown policy expected '1', got '$($restartManagerShutdown[0][0])'." }
+    $migration = Read-Rows $database "SELECT ``Source``, ``Target``, ``Type`` FROM ``CustomAction`` WHERE ``Action`` = 'GameTierPreserveSettings'" 3
+    Assert-Count $migration 1 'Settings preservation action'
+    if ($migration[0][0] -cne 'GameTierSettingsMigration' -or $migration[0][1] -cne 'PreserveSettings' -or $migration[0][2] -cne '1') {
+        throw 'Settings preservation must be a checked immediate DLL action.'
+    }
+    $sequence = Read-Rows $database 'SELECT `Action`, `Condition`, `Sequence` FROM `InstallExecuteSequence`' 3
+    $preserve = @($sequence | Where-Object { $_[0] -ceq 'GameTierPreserveSettings' })
+    $remove = @($sequence | Where-Object { $_[0] -ceq 'RemoveExistingProducts' })
+    Assert-Count $preserve 1 'Settings preservation scheduling'
+    Assert-Count $remove 1 'Upgrade removal scheduling'
+    if ([int]$preserve[0][2] -ge [int]$remove[0][2] -or $preserve[0][1] -cne 'NOT Installed AND NOT REMOVE') {
+        throw 'Settings must be preserved before the old product is removed, only during installation.'
+    }
     Write-Output 'Explorer MSI package passed: payload, per-user registration, feature inclusion, uninstall ownership, upgrade shutdown policy.'
 } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($windowsInstaller) | Out-Null }

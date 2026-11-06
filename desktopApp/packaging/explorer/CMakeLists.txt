@@ -23,6 +23,7 @@ install(TARGETS GameTierExplorer RUNTIME DESTINATION .)
 install(FILES third_party/nlohmann/LICENSE.MIT DESTINATION . RENAME GameTierExplorer.LICENSE.txt)
 
 include(CTest)
+add_subdirectory(../installer/native installer)
 if(BUILD_TESTING)
     add_executable(GameTierExplorerTest tests/ExplorerCommandTest.cpp)
     target_link_libraries(GameTierExplorerTest PRIVATE shell32 ole32 advapi32 uuid)

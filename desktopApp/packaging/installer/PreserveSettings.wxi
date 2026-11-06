@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Binary Id="GameTierSettingsMigration" SourceFile="GameTierInstaller.dll" />
+    <CustomAction Id="GameTierPreserveSettings" BinaryKey="GameTierSettingsMigration" DllEntry="PreserveSettings" Execute="immediate" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="GameTierPreserveSettings" Before="RemoveExistingProducts">NOT Installed AND NOT REMOVE</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Include>

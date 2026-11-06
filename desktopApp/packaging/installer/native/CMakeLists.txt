@@ -1,0 +1,8 @@
+add_library(GameTierInstaller SHARED PreserveSettings.cpp GameTierInstaller.def)
+set_target_properties(GameTierInstaller PROPERTIES PREFIX "")
+target_link_libraries(GameTierInstaller PRIVATE msi shell32 ole32 uuid)
+if(BUILD_TESTING)
+    add_executable(PreserveSettingsTest tests/PreserveSettingsTest.cpp)
+    target_include_directories(PreserveSettingsTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME PreserveSettingsTest COMMAND PreserveSettingsTest)
+endif()
