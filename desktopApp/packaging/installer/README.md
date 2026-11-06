@@ -37,9 +37,9 @@ It changes neither installed packages nor certificate trust.
 Windows user profile. It checks symlinks and persistent settings, defers an update
 while a packaged process is running, and uninstalls. It refuses existing GameTier
 installations or user data. CI runs this lifecycle in Windows PowerShell 5.1.
-After the deferral assertions, CI ends only its own disposable GUI process if a
-startup close-confirmation dialog prevents automatic closure. Normal window
-closure is checked separately with the isolated portable build.
+After the deferral assertions, CI ends only its own disposable GUI process if it
+does not close promptly. Normal window closure is checked manually with the
+isolated portable build.
 
 Settings stay in `%LOCALAPPDATA%\GameTierData`; both the JVM launcher and MSIX
 configuration preserve that external path. The Explorer preference remains in
