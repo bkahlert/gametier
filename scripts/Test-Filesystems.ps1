@@ -1,3 +1,40 @@
+<#
+.SYNOPSIS
+Runs the shared tests against real NTFS and ReFS volumes.
+.DESCRIPTION
+Run from an unelevated PowerShell. Windows requests UAC consent to set up and
+clean up disposable volumes, and to run successful-symlink tests separately.
+Other tests run with your ordinary permissions. No Developer Mode or user-rights
+settings are changed.
+
+Requires a Windows edition/build that can create ReFS volumes. By default the
+runner creates two NTFS and two ReFS dynamic VHDX images, each with 64 GiB virtual
+capacity; actual disk use grows with formatting and test data. Only newly created
+images are formatted. Neither Hyper-V nor a third-party RAM-disk driver is needed.
+
+Cleanup is attempted after failures; any remaining fixture directory is reported.
+Unattended CI must provision elevated setup/cleanup separately because UAC prompts
+cannot be answered noninteractively. Successful-symlink tests require permission
+to create symbolic links; ordinary direct test runs report an unmet prerequisite
+when that permission is unavailable.
+.PARAMETER ExistingVolumes
+Four writable roots on distinct volumes, ordered NTFS1, NTFS2, ReFS1, ReFS2.
+This mode creates and removes only uniquely named test directories within those
+roots; it does not format the volumes. The separate symlink phase still uses UAC.
+.EXAMPLE
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Filesystems.ps1
+Provisions disposable volumes, runs the tests, then cleans up.
+.EXAMPLE
+.\scripts\Test-Filesystems.ps1 -ExistingVolumes 'F:\tests','G:\tests','H:\tests','I:\tests'
+Uses four existing volumes in NTFS1, NTFS2, ReFS1, ReFS2 order.
+.NOTES
+For direct test runs, set GAMETIER_TEST_VOLUMES to four semicolon-separated roots
+in the same order, then run .\kotlin.bat test -m shared. Provisioning, cleanup, and
+symlink privileges are your responsibility in this mode.
+
+TestVolumes.psm1 provides Invoke-WithTestVolumes for other test workflows.
+Test-FileMoves.ps1 is a compatibility entry point to this runner.
+#>
 param(
     [string[]] $ExistingVolumes
 )

@@ -12,6 +12,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/**
+ * Application entry point for transfers tracked in each destination's `.gametier.json`.
+ * [promote] takes a parent directory; the standalone [Promoter.promote] takes the full destination path.
+ */
 class PromotionManager internal constructor(
     private val settings: AppSettings,
     private val operations: GameFileOperations,

@@ -2,6 +2,7 @@
 
 - Evolve this file automatically when durable project guidance changes; keep it concise and remove stale or redundant instructions.
 - Express invariants and feature behavior as runnable tests rather than documentation. Document only core features.
+- Keep the README brief and user-focused. Mention dependencies only when users must install or configure them; place developer guidance beside sources and scripts.
 - Organize sources by responsibility (`game`, `files`, `settings`, `ui`) beneath the existing source roots; mirror packages in tests. Keep feature fixtures with their tests and reusable support in `testsupport.filesystem` or `testsupport.workflow`.
 
 ## Testing
