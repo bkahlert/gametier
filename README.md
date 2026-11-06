@@ -1,4 +1,4 @@
-# GameTier [![CI](https://github.com/bkahlert/gametier/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bkahlert/gametier/actions/workflows/ci.yml) [![Buy Me A Coffee](https://img.shields.io/static/v1?label=&message=%E2%98%95%20Buy%20Me%20A%20Coffee&color=FFDD00)](https://www.buymeacoffee.com/bkahlert)
+# GameTier <img src="shared/composeResources/drawable/gametier.svg" width="20" height="20" alt="GameTier Boostpad icon"> [![CI](https://github.com/bkahlert/gametier/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bkahlert/gametier/actions/workflows/ci.yml) [![Buy Me A Coffee](https://img.shields.io/static/v1?label=&message=%E2%98%95%20Buy%20Me%20A%20Coffee&color=FFDD00)](https://www.buymeacoffee.com/bkahlert)
 
 **Mission:** Help users move a game file or directory from slower storage to faster storage, freeing space on the original drive while keeping the game accessible to existing programs at its original path. Windows is the first target; other platforms may follow.
 
