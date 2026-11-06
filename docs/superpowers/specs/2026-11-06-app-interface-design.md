@@ -1,8 +1,8 @@
 # GameTier app interface
 
 Status: approved in the design interview on 2026-11-06, including the screen
-study. Ready for implementation planning in a new session. Application
-implementation has not started.
+study. Implemented on `feat/app-interface`; see the
+[implementation plan and verification record](../plans/2026-11-06-app-interface.md).
 
 [Open the interactive screen study](../../designs/app-interface/index.html).
 The study uses sample data and illustrative transitions. It does not move
@@ -117,8 +117,8 @@ transfer implementation.
 
 | Location | Current responsibility |
 | --- | --- |
-| [App.kt](../../../shared/src/ui/App.kt) | Greeting scaffold to replace with the approved Compose UI |
-| [main.kt](../../../desktopApp/src/main.kt) | Desktop window; its immediate exit handler needs transfer-aware close handling |
+| [App.kt](../../../shared/src@jvm/ui/App.kt) | Compose screens, dialogs, and application state rendering |
+| [main.kt](../../../desktopApp/src/main.kt) | Desktop window, native selection, and transfer-aware lifetime |
 | [PromotionManager.kt](../../../shared/src@jvm/game/PromotionManager.kt) | Suspending `promote(original, directory)`, `demote(directory, name)`, `registerDirectory(directory)`, and `inventory()` |
 | [PromotionInventory.kt](../../../shared/src@jvm/game/PromotionInventory.kt) | Destination status, indexed promotion condition, paths, and unrecognized children |
 | [AppSettings.kt](../../../shared/src/settings/AppSettings.kt) | Observable nullable default folder and independently remembered destinations |
@@ -178,7 +178,10 @@ It does not add automatic repair or adoption, rename/merge-on-conflict,
 space estimates, transfer speed, ETA, pause, active cancellation, persistent
 queue/history, tray operation, destination forgetting, or extra preferences.
 
-## Continuing in a new session
+## Implementation handoff reference
+
+The following handoff guided implementation. Current verification results and
+remaining native checks are recorded in the linked implementation plan.
 
 1. Read [AGENTS.md](../../../AGENTS.md), this spec, the linked screen study,
    and existing service tests. Preserve this approved design; clarify only

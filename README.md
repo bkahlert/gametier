@@ -18,7 +18,7 @@ packages use the prefix `com.bkahlert.gametier`; tests mirror the source package
 | `game` | Promotion, demotion, and recovery | [JVM](./shared/src@jvm/game) |
 | `files` | Independent file moves and symlink creation | [JVM](./shared/src@jvm/files) |
 | `settings` | Preferences, validation, and persistence | [Common](./shared/src/settings), [JVM](./shared/src@jvm/settings) |
-| `ui` | Compose entry and greeting/platform scaffold | [Common](./shared/src/ui), [JVM](./shared/src@jvm/ui) |
+| `ui` | Compose screens, session queue, selection review, and desktop adapters | [Common](./shared/src/ui), [JVM](./shared/src@jvm/ui) |
 
 Feature fixtures live with their tests. Reusable [filesystem test support](./shared/test@jvm/testsupport/filesystem)
 owns cleanup, symlink prerequisites, and the volume matrix; [workflow test support](./shared/test@jvm/testsupport/workflow)
@@ -41,10 +41,21 @@ Run the project's tests with `./kotlin test`, or `./kotlin test -m <module>` for
 
 ### Application interface
 
-The approved [app interface specification](./docs/superpowers/specs/2026-11-06-app-interface-design.md)
-and [interactive screen study](./docs/designs/app-interface/index.html) describe
-the next application UI change. The specification includes the agreed workflows,
-existing integration boundaries, and instructions for continuing in a new session.
+The home screen lists promotions across remembered destinations. Search by name
+or path, add files or folders with the pickers or drag and drop, and review the
+selection and destination before confirming a promotion. A first destination
+becomes the default; later additions can override it independently.
+
+Confirmed promotions and demotions run sequentially in an application-owned
+queue. Activity shows queued work and session results, with inspectable failures.
+Closing during work offers Keep open or Close when finished. Settings changes
+apply to future additions; existing promotions and confirmed work retain their
+destinations. Missing storage and inconsistent promotions remain visible.
+
+The approved [interface specification](./docs/superpowers/specs/2026-11-06-app-interface-design.md)
+and [screen study](./docs/designs/app-interface/index.html) record the product
+design. The study uses illustrative data; the Compose application uses the real
+promotion manager and preferences.
 
 ### Settings
 
@@ -83,7 +94,8 @@ operations across instances in this process. It persists intent before moving
 game data and commits completion afterward. Failed/interrupted transfers retain
 their intent for inspection, including when the transfer succeeded but its final
 index update failed. Lost indexes on remembered destinations are never reset
-silently. UI wiring follows separately.
+silently. The application preserves its last inventory during transfers and
+refreshes after operations through the same serialized manager.
 
 ### Filesystem components
 
