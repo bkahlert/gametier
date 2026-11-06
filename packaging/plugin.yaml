@@ -1,0 +1,9 @@
+tasks:
+  stageInstaller:
+    action: !com.bkahlert.gametier.files.stageInstaller
+      application: ${module.jar}
+      classpath: ${module.runtimeClasspath}
+      outputDirectory: ${taskOutputDir}
+
+commands:
+  - stageInstaller
