@@ -44,9 +44,9 @@ internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse
                         Text("Saved", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
                 state.settingsError?.let { error ->
-                    Text(error.message ?: "The default folder could not be saved.", color = MaterialTheme.colorScheme.error,
+                    Text(error.message ?: "The settings could not be read or saved.", color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onDetails("Default folder could not be saved", "Entered folder: ${state.defaultInput}\n\n${errorDetails(error)}") }) {
+                    TextButton(onClick = { onDetails("Settings need attention", "Entered folder: ${state.defaultInput}\n\n${errorDetails(error)}") }) {
                         Text("Error details")
                     }
                 }
@@ -63,9 +63,9 @@ internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SelectableText(folder)
-                val inventory = state.inventory.firstOrNull { it.directory.toString().equals(folder, ignoreCase = true) }
+                val inventory = rememberedFolderInventory(folder, state.inventory, state.rememberedDirectoryIdentities)
                 if (inventory != null) {
-                    val notice = destinationNotice(inventory, state.rememberedFolders)
+                    val notice = destinationNotice(inventory, state.rememberedFolders, state.rememberedDirectoryIdentities)
                     if (notice != null) Row(verticalAlignment = Alignment.CenterVertically) {
                         StatusLabel(notice.title, StatusTone.WARNING)
                         TextButton(onClick = { onDetails(notice.title, notice.details) }) { Text("Details") }

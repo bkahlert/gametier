@@ -41,7 +41,9 @@ internal fun PromotionScreen(
     modifier: Modifier = Modifier,
 ) {
     var addMenu by remember { mutableStateOf(false) }
-    val notices = state.inventory.mapNotNull { inventory -> destinationNotice(inventory, state.rememberedFolders)?.let { inventory to it } }
+    val notices = state.inventory.mapNotNull { inventory ->
+        destinationNotice(inventory, state.rememberedFolders, state.rememberedDirectoryIdentities)?.let { inventory to it }
+    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxWidth < 900.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -29,11 +29,12 @@ internal fun promotionPresentation(promotion: Promotion, activity: List<Activity
     }
 }
 
-internal fun destinationNotice(inventory: DestinationInventory, remembered: Set<String>): DestinationNotice? {
+internal fun destinationNotice(inventory: DestinationInventory, remembered: Set<String>, identities: Map<String, Path> = emptyMap()): DestinationNotice? {
     val title = when (inventory.status) {
         DestinationStatus.UNAVAILABLE -> "Promotion folder unavailable"
         DestinationStatus.INVALID_INDEX -> "Promotion metadata needs attention"
-        DestinationStatus.MISSING_INDEX -> if (remembered.any { it.equals(inventory.directory.toString(), ignoreCase = true) })
+        DestinationStatus.MISSING_INDEX -> if (remembered.any { it.equals(inventory.directory.toString(), ignoreCase = true) } ||
+            identities.values.any { it.normalize() == inventory.directory.normalize() })
             "Promotion metadata is missing" else return null
         DestinationStatus.AVAILABLE -> if (inventory.unrecognized.isNotEmpty()) "Unrecognized items in promotion folder" else return null
     }
@@ -50,6 +51,11 @@ internal fun destinationNotice(inventory: DestinationInventory, remembered: Set<
         inventory.error?.let { appendLine(); append(errorDetails(it)) }
     }.trim())
 }
+
+internal fun rememberedFolderInventory(folder: String, inventory: List<DestinationInventory>, identities: Map<String, Path>): DestinationInventory? =
+    inventory.firstOrNull {
+        it.directory.toString().equals(folder, ignoreCase = true) || identities[folder]?.normalize() == it.directory.normalize()
+    }
 
 internal fun promotionsEmptyState(directory: Path?, total: Int, search: String, hasDestinationProblems: Boolean): PromotionsEmptyState = when {
     total > 0 && search.isNotBlank() -> PromotionsEmptyState.NO_MATCHES

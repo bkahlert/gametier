@@ -78,6 +78,39 @@ class UiPresentationTest {
         }
 
         @Test
+        fun `on remembered alias metadata loss the canonical folder remains a problem`() {
+            val alias = "C:/GameAlias"
+            val inventory = DestinationInventory(directory, DestinationStatus.MISSING_INDEX)
+
+            val notice = destinationNotice(inventory, setOf(alias), mapOf(alias to directory))
+            val empty = promotionsEmptyState(directory, 0, "", notice != null)
+
+            assertSoftly {
+                notice?.title shouldBe "Promotion metadata is missing"
+                notice?.details shouldContain directory.toString()
+                empty shouldBe PromotionsEmptyState.UNAVAILABLE
+            }
+        }
+
+        @Test
+        fun `on remembered alias inspection settings uses its canonical inventory`() {
+            val alias = "C:/GameAlias"
+            val identities = mapOf(alias to directory)
+            val offline = DestinationInventory(directory, DestinationStatus.UNAVAILABLE)
+            val available = offline.copy(status = DestinationStatus.AVAILABLE)
+
+            val unavailableResult = rememberedFolderInventory(alias, listOf(offline), identities)
+            val availableResult = rememberedFolderInventory(alias, listOf(available), identities)
+            val unrelatedResult = rememberedFolderInventory("C:/Other", listOf(available), identities)
+
+            assertSoftly {
+                unavailableResult?.status shouldBe DestinationStatus.UNAVAILABLE
+                availableResult?.status shouldBe DestinationStatus.AVAILABLE
+                unrelatedResult shouldBe null
+            }
+        }
+
+        @Test
         fun `on first use empty collection and unmatched search guidance follows context`() {
             val firstUse = promotionsEmptyState(null, 0, "", false)
             val empty = promotionsEmptyState(directory, 0, "", false)
