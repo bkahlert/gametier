@@ -11,6 +11,10 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.DosFileAttributeView
 
 object FileMover {
+    internal fun validateSource(source: Path) {
+        scan(canonicalEntry(source))
+    }
+
     fun move(source: Path, destination: Path) {
         var phase = "validation"
         try {
