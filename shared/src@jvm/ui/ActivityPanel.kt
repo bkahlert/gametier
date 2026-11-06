@@ -73,8 +73,12 @@ private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge
                     ActivityStatus.FAILED, ActivityStatus.STOPPED -> StatusTone.WARNING
                     ActivityStatus.SUCCEEDED -> StatusTone.SUCCESS
                 }, busy = item.status == ActivityStatus.RUNNING)
-                Text("${if (item.request.kind == TransferKind.PROMOTE) "Promote" else "Demote"} ${item.request.original.fileName}", style = MaterialTheme.typography.titleSmall)
-                Text("${if (item.request.kind == TransferKind.PROMOTE) item.request.original else item.request.destination} → ${if (item.request.kind == TransferKind.PROMOTE) item.request.destination else item.request.original}",
+                Text("${item.request.kind.label} ${item.request.original.fileName}", style = MaterialTheme.typography.titleSmall)
+                Text("${when (item.request.kind) {
+                    TransferKind.PROMOTE -> item.request.original
+                    TransferKind.DEMOTE -> item.request.destination
+                    TransferKind.RESTORE_BACKUP -> item.request.backup
+                }} → ${if (item.request.kind == TransferKind.PROMOTE) item.request.destination else item.request.original}",
                     style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 progress.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

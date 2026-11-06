@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.WRITE
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.DosFileAttributeView
+import java.nio.file.attribute.FileTime
 
 object FileMover {
     internal fun validateSource(source: Path) {
@@ -19,7 +20,41 @@ object FileMover {
 
     fun move(source: Path, destination: Path) = move(source, destination) {}
 
-    fun move(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit) {
+    fun move(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit) =
+        transfer(source, destination, retainSource = false, onProgress)
+
+    fun copy(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit = {}) =
+        transfer(source, destination, retainSource = true, onProgress)
+
+    internal fun snapshot(path: Path): FileTreeSnapshot = snapshot(scan(canonicalEntry(path)))
+
+    fun deleteTree(path: Path) = delete(path, null)
+
+    internal fun deleteTree(path: Path, expected: FileTreeSnapshot) = delete(path, expected)
+
+    private fun delete(path: Path, expected: FileTreeSnapshot?) {
+        val absolute = path.toAbsolutePath().normalize()
+        val parent = absolute.parent ?: throw IOException("A filesystem root cannot be deleted")
+        var ancestor = absolute.root
+        for (part in parent) {
+            ancestor = ancestor.resolve(part)
+            if (!Files.isDirectory(ancestor, NOFOLLOW_LINKS) || isWindowsReparsePoint(ancestor)) {
+                throw IOException("Cleanup parent must be an ordinary directory: $ancestor")
+            }
+        }
+        val root = canonicalEntry(path)
+        val entries = scan(root)
+        if (expected != null && snapshot(entries) != expected) throw IOException("Cleanup tree changed: $path")
+        entries.keys.toList().asReversed().forEach { deleteSource(resolve(root, it)) }
+    }
+
+    private fun snapshot(entries: Map<Path, BasicFileAttributes>): FileTreeSnapshot = FileTreeSnapshot(
+        entries.mapValues { (_, attributes) ->
+            FileEntryState(attributes.isDirectory, attributes.size(), attributes.lastModifiedTime(), attributes.fileKey())
+        },
+    )
+
+    private fun transfer(source: Path, destination: Path, retainSource: Boolean, onProgress: (TransferProgress) -> Unit) {
         var phase = "validation"
         try {
             onProgress(TransferProgress(TransferPhase.PREPARING))
@@ -32,7 +67,7 @@ object FileMover {
                 throw IOException("Destination must not be inside the source")
             }
             val entries = scan(sourcePath)
-            if (Files.getFileStore(sourcePath) == Files.getFileStore(destinationPath.parent)) {
+            if (!retainSource && Files.getFileStore(sourcePath) == Files.getFileStore(destinationPath.parent)) {
                 phase = "rename"
                 onProgress(TransferProgress(TransferPhase.MOVING))
                 Files.move(sourcePath, destinationPath)
@@ -87,14 +122,16 @@ object FileMover {
                 throw IOException("Destination entries or file sizes do not match the source")
             }
 
-            phase = "source cleanup"
-            entries.keys.toList().asReversed().forEach { deleteSource(resolve(sourcePath, it)) }
+            if (!retainSource) {
+                phase = "source cleanup"
+                entries.keys.toList().asReversed().forEach { deleteSource(resolve(sourcePath, it)) }
+            }
         } catch (error: IOException) {
-            throw moveFailure(source, destination, phase, error)
+            throw transferFailure(source, destination, phase, error, retainSource)
         } catch (error: ReadOnlyFileSystemException) {
-            throw moveFailure(source, destination, phase, error)
+            throw transferFailure(source, destination, phase, error, retainSource)
         } catch (error: UnsupportedOperationException) {
-            throw moveFailure(source, destination, phase, error)
+            throw transferFailure(source, destination, phase, error, retainSource)
         }
     }
 
@@ -173,15 +210,19 @@ object FileMover {
         }
     }
 
-    private fun moveFailure(source: Path, destination: Path, phase: String, error: Exception): IOException {
+    private fun transferFailure(source: Path, destination: Path, phase: String, error: Exception, retainSource: Boolean): IOException {
         val state = when (phase) {
             "copy", "verification" -> "Source retained; destination may be partial."
             "source cleanup" -> "Destination copied; source cleanup is incomplete."
             else -> "Move did not complete."
         }
-        return IOException("$phase failed moving '$source' to '$destination'. $state ${error.message.orEmpty()}", error)
+        val operation = if (retainSource) "copying" else "moving"
+        return IOException("$phase failed $operation '$source' to '$destination'. $state ${error.message.orEmpty()}", error)
     }
 }
+
+internal data class FileTreeSnapshot(val entries: Map<Path, FileEntryState>)
+internal data class FileEntryState(val directory: Boolean, val size: Long, val modified: FileTime, val key: Any?)
 
 internal fun isWindowsReparsePoint(path: Path): Boolean {
     if (path.fileSystem != java.nio.file.FileSystems.getDefault() ||

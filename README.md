@@ -9,6 +9,11 @@ GameTier moves whole game folders or individual files, such as ROMs, and leaves
 a symbolic link behind so your launcher or emulator can still find them.
 Move them back whenever you need the space.
 
+Promotion keeps a snapshot on the original drive, so it does not free space
+there. The promoted files receive subsequent changes; the snapshot stays as it
+was at promotion. Snapshots live in
+`<source-drive>:\.gametier\backups\<original-name>`.
+
 ![GameTier listing Clockwork Vale, a folder-based game, and Starfall Circuit, a ROM](docs/screenshots/promotions.png)
 
 *Fictional demo games: Clockwork Vale (folder) and Starfall Circuit (ROM), moving from E: to C:.*
@@ -29,9 +34,17 @@ Current releases are unsigned, so Windows may show a publisher warning.
 
 ![Reviewing Starfall Circuit.rom on E: before moving it to C:](docs/screenshots/review.png)
 
-Use **Demote** to move a game back to its original location. Search finds promotions
-by name or path; **Activity** shows queued work and results. Keep GameTier open
-until transfers finish, and use one running instance at a time.
+Use **Demote** to return the latest game files to their original location. With a
+source backup, the original drive needs temporary space for the returning files;
+the backup and promoted copy are removed after a successful return.
+
+If the promoted files become unavailable, **Restore backup** returns the snapshot.
+Changes made after promotion will be missing. **Details** shows the backup location;
+ordinary files and restore instructions also allow manual recovery without GameTier.
+Older promotions without snapshots are marked **Unprotected** and can still be demoted.
+
+Search finds promotions by name or path; **Activity** shows queued work and results.
+Keep GameTier open until transfers finish, and use one running instance at a time.
 
 If Windows blocks symbolic links, open **Activity → Allow symbolic links… →
 Restart as administrator**. Approve the Windows prompt, then review and confirm

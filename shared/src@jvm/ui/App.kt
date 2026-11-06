@@ -60,6 +60,7 @@ fun App(
         if (state.pendingSelection.isNotEmpty() || state.review != null || state.preparing || state.reviewError != null)
             ReviewDialog(state, controller, onChooseReviewDirectory, showDetails)
         state.demotion?.let { DemoteDialog(it, controller::cancelDemote, controller::confirmDemote) }
+        state.backupRestoration?.let { RestoreBackupDialog(it, controller::cancelRestoreBackup, controller::confirmRestoreBackup) }
         state.linkPermission?.let { LinkPermissionDialog(state, controller) }
         if (state.closePrompt) CloseDialog(state, controller::keepOpen, controller::closeWhenFinished)
         state.inputError?.let { DetailsDialog("Selection could not be opened", errorDetails(it), controller::clearError) }

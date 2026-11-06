@@ -1,6 +1,7 @@
 package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.DestinationInventory
+import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.settings.AppSettings
 import java.nio.file.Path
 import kotlinx.coroutines.CompletableDeferred
@@ -32,6 +33,7 @@ internal class AppTestOperations : PromotionOperations {
     var inventoryError: Throwable? = null
     var inventoryGate: CompletableDeferred<Unit>? = null
     var transfer: suspend (TransferRequest) -> Unit = {}
+    var restoreProgress: TransferProgress? = null
     var health: suspend (Path) -> String? = { null }
     val started = mutableListOf<TransferRequest>()
     var inventoryCalls = 0
@@ -50,6 +52,14 @@ internal class AppTestOperations : PromotionOperations {
         val promotion = snapshot.flatMap { it.promotions }.single { it.destination == directory.resolve(name) }
         val request = TransferRequest(TransferKind.DEMOTE, promotion.original, directory, promotion.destination)
         started += request
+        transfer(request)
+        snapshot = snapshot.map { it.copy(promotions = it.promotions - promotion) }
+    }
+    override suspend fun restoreBackup(original: Path, onProgress: (TransferProgress) -> Unit) {
+        val promotion = snapshot.flatMap { it.promotions }.single { it.original == original }
+        val request = TransferRequest(TransferKind.RESTORE_BACKUP, original, promotion.destination.parent, promotion.destination, promotion.backup)
+        started += request
+        restoreProgress?.let(onProgress)
         transfer(request)
         snapshot = snapshot.map { it.copy(promotions = it.promotions - promotion) }
     }

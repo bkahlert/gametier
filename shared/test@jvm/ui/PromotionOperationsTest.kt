@@ -1,7 +1,7 @@
 package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.DestinationStatus
-import com.bkahlert.gametier.game.PromotionManager
+import com.bkahlert.gametier.game.isolatedPromotionManager
 import com.bkahlert.gametier.files.TransferPhase
 import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.testsupport.filesystem.requireSymlinkSupport
@@ -30,7 +30,7 @@ class PromotionOperationsTest {
                 val settings = AppTestSettings(destination)
                 settings.rememberPromotionFolder(alias.toString())
 
-                val result = ManagerPromotionOperations(settings).destinationProblem(destination)
+                val result = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings)).destinationProblem(destination)
 
                 result.isNullOrBlank() shouldBe false
             }
@@ -40,13 +40,13 @@ class PromotionOperationsTest {
         fun `on read only metadata destination is blocked without changing the index`() = withTestDirectory { root ->
             runBlocking {
                 val settings = AppTestSettings(root)
-                PromotionManager(settings).registerDirectory(root)
+                isolatedPromotionManager(root, settings).registerDirectory(root)
                 val index = root.resolve(".gametier.json")
                 val view = Files.getFileAttributeView(index, DosFileAttributeView::class.java)
                 val original = Files.readString(index)
                 view.setReadOnly(true)
                 try {
-                    val result = ManagerPromotionOperations(settings).destinationProblem(root)
+                    val result = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings)).destinationProblem(root)
 
                     assertSoftly {
                         result.isNullOrBlank() shouldBe false
@@ -62,7 +62,7 @@ class PromotionOperationsTest {
         fun `on fresh destination health inspection leaves files and settings unchanged`() = withTestDirectory { root ->
             runBlocking {
                 val settings = AppTestSettings(root)
-                val operations = ManagerPromotionOperations(settings)
+                val operations = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings))
 
                 val result = operations.destinationProblem(root)
 
@@ -78,7 +78,7 @@ class PromotionOperationsTest {
         fun `on missing remembered metadata damaged metadata or missing storage destination is blocked`() = withTestDirectory { root ->
             runBlocking {
                 val settings = AppTestSettings(root)
-                val operations = ManagerPromotionOperations(settings)
+                val operations = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings))
                 settings.rememberPromotionFolder(root.toString())
 
                 val missing = operations.destinationProblem(root)
@@ -99,7 +99,7 @@ class PromotionOperationsTest {
         fun `on healthy registered destination inspection allows further independent work`() = withTestDirectory { root ->
             runBlocking {
                 val settings = AppTestSettings(root)
-                val manager = PromotionManager(settings)
+                val manager = isolatedPromotionManager(root, settings)
                 manager.registerDirectory(root)
                 val operations = ManagerPromotionOperations(settings, manager)
 
@@ -123,7 +123,8 @@ class PromotionOperationsTest {
                 requireSymlinkSupport(root)
                 val original = Files.writeString(root.resolve("game"), "content")
                 val directory = Files.createDirectory(root.resolve("fast"))
-                val operations = ManagerPromotionOperations(AppTestSettings(directory))
+                val settings = AppTestSettings(directory)
+                val operations = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings))
                 val promoted = mutableListOf<TransferProgress>()
                 val demoted = mutableListOf<TransferProgress>()
 
@@ -149,7 +150,7 @@ class PromotionOperationsTest {
                 val original = Files.writeString(root.resolve("game"), "game content")
                 val target = Files.createDirectory(root.resolve("target"))
                 Files.writeString(target.resolve("game"), "existing")
-                val operations = ManagerPromotionOperations(settings)
+                val operations = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings))
 
                 val result = shouldThrow<IOException> { operations.promote(original, target) }
 
