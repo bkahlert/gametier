@@ -156,7 +156,7 @@ Files: modify `desktopApp/src/main.kt`; create native picker/drop adapters under
   preserve and report prerequisites instead of claiming skipped tests passed.
 - [x] Review whole diff against spec and resolve actionable findings with tests.
 - [x] Update README core UI description and spec implementation status.
-- [ ] Commit remaining logical changes, push feature branch and create review PR.
+- [x] Commit remaining logical changes, push feature branch and create review PR.
   Do not merge without the user's instruction.
 
 ## Execution record
@@ -185,3 +185,5 @@ Files: modify `desktopApp/src/main.kt`; create native picker/drop adapters under
 - Close when finished drains the queue but leaves failures open for inspection.
 - Final scoped review resolved all findings, including retaining attempted paths
   through destination-level inspection failures until physical storage is available.
+- [Draft PR #12](https://github.com/bkahlert/gametier/pull/12) contains the complete
+  implementation and records the remaining native checks. The branch is unmerged.
