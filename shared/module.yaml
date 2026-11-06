@@ -13,6 +13,9 @@ dependencies:
   - $libs.androidx.lifecycle.viewmodel.compose
   - $libs.androidx.lifecycle.runtime.compose
 
+test-dependencies:
+  - $libs.kotest.assertions.core
+
 settings:
   compose:
     enabled: true
