@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">GameTier Boostpad</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#302053"/>
+      <stop offset="1" stop-color="#17162D"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".02"/>
+    </linearGradient>
+    <linearGradient id="controller" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#D5B8FF"/>
+      <stop offset="1" stop-color="#9B6BF5"/>
+    </linearGradient>
+    <linearGradient id="boost" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#A1EBDD"/>
+      <stop offset="1" stop-color="#E0FFF4"/>
+    </linearGradient>
+  </defs>
+  <rect x="9" y="9" width="238" height="238" rx="54" fill="url(#background)"/>
+  <rect x="9.8" y="9.8" width="236.4" height="236.4" rx="53" fill="none" stroke="url(#rim)" stroke-width="1.6"/>
+  <path d="M144 101L170 75L155 60L198 60L198 103L183 88L157 114Z" fill="url(#boost)"/>
+  <path d="M82 101C70 101 63 111 59 126L47 169C43 185 59 197 71 186L92 167H163L184 186C197 197 213 185 208 169L196 126C192 111 185 101 173 101Z" fill="url(#controller)"/>
+  <path d="M84 124V150M71 137H97" stroke="#2B2050" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="168" cy="127" r="6.5" fill="#F7F0FF"/>
+  <circle cx="181" cy="142" r="6.5" fill="#F7F0FF"/>
+</svg>
