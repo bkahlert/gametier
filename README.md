@@ -23,6 +23,21 @@ command line:
 
 Run the project's tests with `./kotlin test`, or `./kotlin test -m <module>` for a single module.
 
+### Settings
+
+`getAppSettings()` supplies a shared `AppSettings` instance backed by AndroidX
+Preferences DataStore. Its `defaultPromotionFolder: Flow<String?>` emits the
+current preference and changes. Use suspending `setDefaultPromotionFolder(path)`
+and `clearDefaultPromotionFolder()` to update it; read once with Flow's `first()`.
+The preference starts unset and represents the parent folder for promoted games.
+
+The Windows backend stores per-user settings in
+`%LOCALAPPDATA%\GameTier\settings.preferences_pb`. It accepts native absolute paths
+without requiring an available drive or existing folder and preserves their text.
+Invalid paths and storage errors are reported; successful writes are persisted.
+Use one running GameTier process at a time. UI and promotion integration follow
+separately.
+
 ### Filesystem components
 
 The JVM building block is `FileMover.move(source: Path, destination: Path)`.
