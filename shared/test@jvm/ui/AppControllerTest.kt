@@ -556,6 +556,51 @@ class AppControllerTest {
     @Nested
     inner class Inventory {
         @Test
+        fun `on unavailable destination snapshots session paths stay protected until physical storage is inspectable`() = withTestDirectory { root ->
+            runTest {
+                val destination = Files.createDirectory(root.resolve("destination"))
+                val alias = root.resolve("alias")
+                createTestJunction(alias, destination)
+                for (status in listOf(DestinationStatus.UNAVAILABLE, DestinationStatus.INVALID_INDEX, DestinationStatus.MISSING_INDEX)) {
+                    val original = root.resolve("game-${status.name}")
+                    val data = alias.resolve(original.fileName)
+                    val independent = root.resolve("independent-${status.name}")
+                    val other = root.resolve("other-${status.name}")
+                    val operations = AppTestOperations()
+                    val app = AppController(backgroundScope, AppTestSettings(alias), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+                    runCurrent()
+                    app.select(listOf(original))
+                    runCurrent()
+                    operations.snapshot = listOf(DestinationInventory(destination, status))
+                    app.confirmReview()
+                    runCurrent()
+                    app.select(listOf(data, independent))
+                    runCurrent()
+                    app.setReviewDirectory(other)
+                    runCurrent()
+                    app.confirmReview()
+                    runCurrent()
+                    val protected = operations.started.map { it.original }
+                    operations.snapshot = listOf(DestinationInventory(destination, DestinationStatus.AVAILABLE))
+                    app.refresh()
+                    runCurrent()
+                    app.select(listOf(data))
+                    runCurrent()
+                    app.setReviewDirectory(other)
+                    runCurrent()
+                    app.confirmReview()
+                    runCurrent()
+                    val recovered = operations.started.map { it.original }
+
+                    assertSoftly {
+                        protected shouldBe listOf(original, independent)
+                        recovered shouldBe listOf(original, independent, data)
+                    }
+                }
+            }
+        }
+
+        @Test
         fun `on failed transfer and refresh session recovery paths remain protected`() = runTest {
             val operations = AppTestOperations().apply { transfer = { throw IOException("move phase") } }
             val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))

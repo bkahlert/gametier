@@ -2,6 +2,7 @@ package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.Promotion
 import com.bkahlert.gametier.game.PromotionCondition
+import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.validatePromotionFolder
 import java.io.IOException
@@ -381,7 +382,12 @@ class AppController internal constructor(
             val inventory = operations.inventory()
             val remembered = state.value.rememberedFolders
             val identities = onIo { remembered.associateWith { directoryIdentity(Path.of(it)) } }
-            unrefreshedTransfers = emptyList()
+            val attempted = unrefreshedTransfers
+            unrefreshedTransfers = onIo {
+                attempted.filter { request -> inventory.none {
+                    it.status == DestinationStatus.AVAILABLE && sameDirectory(it.directory, request.directory)
+                } }
+            }
             edit { it.copy(inventory = inventory.toList(), inventoryError = null, inventoryLoaded = true,
                 rememberedDirectoryIdentities = if (it.rememberedFolders == remembered) identities else it.rememberedDirectoryIdentities) }
             if (state.value.pendingSelection.isNotEmpty()) prepare()
