@@ -2,19 +2,19 @@
   <title id="title">GameTier Boostpad</title>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#302053"/>
+      <stop offset="0" stop-color="#302053"/>
       <stop offset="1" stop-color="#17162D"/>
     </linearGradient>
     <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-      <stop stop-color="#FFFFFF" stop-opacity=".13"/>
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".13"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity=".02"/>
     </linearGradient>
     <linearGradient id="controller" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#D5B8FF"/>
+      <stop offset="0" stop-color="#D5B8FF"/>
       <stop offset="1" stop-color="#9B6BF5"/>
     </linearGradient>
     <linearGradient id="boost" x1="0" y1="1" x2="1" y2="0">
-      <stop stop-color="#A1EBDD"/>
+      <stop offset="0" stop-color="#A1EBDD"/>
       <stop offset="1" stop-color="#E0FFF4"/>
     </linearGradient>
   </defs>
