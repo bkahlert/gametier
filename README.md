@@ -39,6 +39,13 @@ command line:
 
 Run the project's tests with `./kotlin test`, or `./kotlin test -m <module>` for a single module.
 
+### Application interface
+
+The approved [app interface specification](./docs/superpowers/specs/2026-11-06-app-interface-design.md)
+and [interactive screen study](./docs/designs/app-interface/index.html) describe
+the next application UI change. The specification includes the agreed workflows,
+existing integration boundaries, and instructions for continuing in a new session.
+
 ### Settings
 
 `getAppSettings()` supplies a shared `AppSettings` instance backed by AndroidX
