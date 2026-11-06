@@ -13,6 +13,10 @@ internal data class PromotionPresentation(val status: String, val tone: StatusTo
     val canRestoreBackup: Boolean = false)
 internal data class DestinationNotice(val title: String, val details: String)
 internal enum class PromotionsEmptyState { FIRST_USE, EMPTY, NO_MATCHES, UNAVAILABLE }
+internal enum class DefaultFolderStatus { LOADING, MISSING, CONFIGURED }
+internal data class DefaultFolderPresentation(val status: DefaultFolderStatus, val directory: Path?) {
+    val canEdit: Boolean get() = status != DefaultFolderStatus.LOADING
+}
 internal data class ReviewPresentation(val ready: Int, val skipped: Int, val blocked: Int, val canConfirm: Boolean)
 internal data class ActivityPresentation(val running: Int, val queued: Int, val unacknowledged: Int, val total: Int)
 
@@ -63,6 +67,15 @@ internal fun rememberedFolderInventory(folder: String, inventory: List<Destinati
     inventory.firstOrNull {
         it.directory.toString().equals(folder, ignoreCase = true) || identities[folder]?.normalize() == it.directory.normalize()
     }
+
+internal fun defaultFolderPresentation(state: AppState): DefaultFolderPresentation = when {
+    state.settingsLoading -> DefaultFolderPresentation(DefaultFolderStatus.LOADING, null)
+    state.defaultDirectory == null -> DefaultFolderPresentation(DefaultFolderStatus.MISSING, null)
+    else -> DefaultFolderPresentation(DefaultFolderStatus.CONFIGURED, state.defaultDirectory)
+}
+
+internal fun reviewDialogVisible(state: AppState): Boolean = !state.settingsLoading &&
+    (state.pendingSelection.isNotEmpty() || state.review != null || state.preparing || state.reviewError != null)
 
 internal fun promotionsEmptyState(directory: Path?, total: Int, search: String, hasDestinationProblems: Boolean): PromotionsEmptyState = when {
     total > 0 && search.isNotBlank() -> PromotionsEmptyState.NO_MATCHES

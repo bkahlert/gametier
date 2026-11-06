@@ -57,6 +57,10 @@ class AppController internal constructor(
     private var settingsWriteError: Exception? = null
     private var defaultObserving = false
     private var rememberedObserving = false
+    private var observedDefault: String? = null
+    private var observedRemembered = emptySet<String>()
+    private var observedRememberedIdentities = emptyMap<String, Path>()
+    private var settingsPublished = false
     private var unrefreshedTransfers = emptyList<TransferRequest>()
 
     init {
@@ -75,11 +79,11 @@ class AppController internal constructor(
         scope.launch {
             try {
                 settings.defaultPromotionFolder.collect { value ->
-                    val directory = value?.let(Path::of)
+                    observedDefault = value
                     defaultLoaded = true
                     defaultReadFinished = true
                     defaultReadError = null
-                    edit { it.copy(defaultDirectory = directory, defaultInput = if (inputDirty) it.defaultInput else value.orEmpty(), settingsError = settingsProblem()) }
+                    publishSettings()
                     resumeSelection()
                     requestRefresh()
                 }
@@ -106,10 +110,12 @@ class AppController internal constructor(
             try {
                 settings.promotionFolders.collect { folders ->
                     val identities = onIo { folders.associateWith { directoryIdentity(Path.of(it)) } }
+                    observedRemembered = folders.toSet()
+                    observedRememberedIdentities = identities
                     rememberedLoaded = true
                     rememberedReadFinished = true
                     rememberedReadError = null
-                    edit { it.copy(rememberedFolders = folders.toSet(), rememberedDirectoryIdentities = identities, settingsError = settingsProblem()) }
+                    publishSettings()
                     resumeSelection()
                     requestRefresh()
                 }
@@ -130,6 +136,18 @@ class AppController internal constructor(
     private fun retrySettingsReads() {
         if (defaultReadError != null) observeDefault()
         if (rememberedReadError != null) observeRemembered()
+    }
+    private fun publishSettings() {
+        if (!settingsPublished && (!defaultLoaded || !rememberedLoaded)) return
+        val default = observedDefault
+        edit { it.copy(
+            defaultDirectory = default?.let(Path::of),
+            defaultInput = if (inputDirty) it.defaultInput else default.orEmpty(),
+            rememberedFolders = observedRemembered,
+            rememberedDirectoryIdentities = observedRememberedIdentities,
+            settingsError = settingsProblem(),
+        ) }
+        settingsPublished = true
     }
     private fun settingsProblem(): Exception? = settingsWriteError ?: rememberedReadError ?: defaultReadError
     private fun invalidateSettingsReview(error: Exception) {
@@ -307,6 +325,7 @@ class AppController internal constructor(
             edit { it.copy(savingSettings = true, settingsError = settingsProblem()) }
             settings.setDefaultPromotionFolder(input)
             val directory = Path.of(input)
+            observedDefault = input
             defaultLoaded = true
             defaultReadFinished = true
             if (revision == inputRevision) inputDirty = false

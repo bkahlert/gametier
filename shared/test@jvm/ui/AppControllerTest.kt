@@ -957,6 +957,74 @@ class AppControllerTest {
     @Nested
     inner class Settings {
         @Test
+        fun `on later remembered observer failure default updates keep the last coherent history`() = runTest {
+            val failure = IOException("history changed")
+            val failed = CompletableDeferred<Unit>()
+            val initial = appPath("initial")
+            val replacement = appPath("replacement")
+            val remembered = appPath("remembered")
+            val settings = AppTestSettings(initial).apply {
+                promotionFolders = flow {
+                    emit(setOf(remembered.toString()))
+                    failed.await()
+                    throw failure
+                }
+            }
+            val app = AppController(backgroundScope, settings, AppTestOperations(), readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+
+            failed.complete(Unit)
+            runCurrent()
+            settings.defaults.value = replacement.toString()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                result.defaultDirectory shouldBe replacement
+                result.rememberedFolders shouldBe setOf(remembered.toString())
+                result.settingsError shouldBeSameInstanceAs failure
+            }
+        }
+
+        @Test
+        fun `on explorer promotion startup settings load coherently before inventory and review`() = runTest {
+            val loaded = CompletableDeferred<Unit>()
+            val destination = appPath("stored")
+            val remembered = appPath("remembered")
+            val selection = appPath("game")
+            val settings = AppTestSettings().apply {
+                defaultPromotionFolder = flow {
+                    loaded.await()
+                    emit(destination.toString())
+                }
+                this.remembered.value = setOf(remembered.toString())
+            }
+            val operations = AppTestOperations()
+            val app = AppController(backgroundScope, settings, operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            PromotionLaunch.parse(arrayOf("--promote", selection.toString()))!!.open(app)
+            runCurrent()
+            val loading = app.state.value
+
+            loaded.complete(Unit)
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                loading.settingsLoading shouldBe true
+                loading.defaultDirectory shouldBe null
+                loading.rememberedFolders shouldBe emptySet()
+                loading.inventoryLoaded shouldBe false
+                loading.review shouldBe null
+                operations.inventoryCalls shouldBe 1
+                result.settingsLoading shouldBe false
+                result.defaultDirectory shouldBe destination
+                result.rememberedFolders shouldBe setOf(remembered.toString())
+                result.review?.directory shouldBe destination
+                settings.saved shouldBe emptyList()
+            }
+        }
+
+        @Test
         fun `on remembered observer failure settled review loses permission to confirm until refresh recovery`() = runTest {
             val failure = IOException("history changed")
             val gate = CompletableDeferred<Unit>()

@@ -44,6 +44,7 @@ internal fun PromotionScreen(
     val notices = state.inventory.mapNotNull { inventory ->
         destinationNotice(inventory, state.rememberedFolders, state.rememberedDirectoryIdentities)?.let { inventory to it }
     }
+    val defaultFolder = defaultFolderPresentation(state)
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxWidth < 900.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -64,9 +65,14 @@ internal fun PromotionScreen(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Default folder", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (state.defaultDirectory != null) PathText(state.defaultDirectory, Modifier.weight(1f), compact = true)
-                else Text("Choose a folder before your first promotion", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = controller::showSettings) { Text(if (state.defaultDirectory == null) "Choose folder" else "Change") }
+                when (defaultFolder.status) {
+                    DefaultFolderStatus.LOADING -> Text("Loading default folder…", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    DefaultFolderStatus.MISSING -> Text("Choose a folder before your first promotion", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    DefaultFolderStatus.CONFIGURED -> PathText(requireNotNull(defaultFolder.directory), Modifier.weight(1f), compact = true)
+                }
+                TextButton(onClick = controller::showSettings, enabled = defaultFolder.status != DefaultFolderStatus.LOADING) {
+                    Text(if (defaultFolder.status == DefaultFolderStatus.CONFIGURED) "Change" else "Choose folder")
+                }
             }
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
