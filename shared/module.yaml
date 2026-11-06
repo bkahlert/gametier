@@ -12,9 +12,12 @@ dependencies:
   - $compose.hotReload.runtimeApi
   - $libs.androidx.lifecycle.viewmodel.compose
   - $libs.androidx.lifecycle.runtime.compose
+  - $libs.androidx.datastore.preferences.core
+  - $libs.kotlinx.coroutines.core
 
 test-dependencies:
   - $libs.kotest.assertions.core
+  - $libs.kotlinx.coroutines.test
 
 settings:
   compose:
