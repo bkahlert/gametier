@@ -4,6 +4,7 @@ import com.bkahlert.gametier.game.DestinationInventory
 import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.PromotionInventory
 import com.bkahlert.gametier.game.PromotionManager
+import com.bkahlert.gametier.game.Promotion
 import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.getAppSettings
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 
 interface PromotionOperations {
     suspend fun inventory(): List<DestinationInventory>
+    suspend fun findPromotion(selection: Path): Promotion?
     suspend fun promote(original: Path, directory: Path)
     suspend fun demote(directory: Path, name: String)
     suspend fun restoreBackup(original: Path, onProgress: (TransferProgress) -> Unit = {})
@@ -29,6 +31,7 @@ class ManagerPromotionOperations(
     private val manager: PromotionManager = PromotionManager(settings),
 ) : PromotionOperations {
     override suspend fun inventory(): List<DestinationInventory> = manager.inventory()
+    override suspend fun findPromotion(selection: Path): Promotion? = manager.findPromotion(selection)
     override suspend fun promote(original: Path, directory: Path) = manager.promote(original, directory)
     override suspend fun demote(directory: Path, name: String) = manager.demote(directory, name)
     override suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit) = manager.promote(original, directory, onProgress)

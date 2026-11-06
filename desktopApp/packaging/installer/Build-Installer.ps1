@@ -47,6 +47,8 @@ $fragment = $integration.DocumentElement.FirstChild
 $main.DocumentElement.AppendChild($main.ImportNode($fragment, $true)) | Out-Null
 $main.Save((Join-Path $resources 'main.wxs'))
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'LICENSE') -Destination $InputDirectory
+Copy-Item -LiteralPath (Join-Path $projectDirectory 'desktopApp/packaging/explorer/third_party/nlohmann/LICENSE.MIT') `
+    -Destination (Join-Path $InputDirectory 'GameTierExplorer.LICENSE.txt')
 
 & $jpackage --type app-image --name GameTier --app-version $AppVersion `
     --vendor $vendor `

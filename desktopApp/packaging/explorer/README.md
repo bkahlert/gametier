@@ -1,7 +1,8 @@
 # Explorer command
 
-The native `GameTierExplorer.dll` opens promotion review in the adjacent
-`GameTier.exe`. Build the x64 DLL with CMake 3.24+, MSVC and the Windows SDK:
+The native `GameTierExplorer.dll` opens promotion, demotion, or source-backup
+recovery review in the adjacent `GameTier.exe`. Build the x64 DLL with CMake
+3.24+, MSVC and the Windows SDK:
 
 ```powershell
 cmake -S desktopApp/packaging/explorer -B build/explorer -A x64
@@ -12,7 +13,13 @@ ctest --test-dir build/explorer -C Release --output-on-failure
 CTest loads the real DLL through its COM factory and uses isolated per-process
 registry preferences and temporary filesystem fixtures. Its adjacent `GameTier.exe`
 is an argument recorder; do not ship that test executable. The DLL statically
-links the MSVC runtime.
+links the MSVC runtime. Managed-game tests require permission to create symbolic
+links (run the test process elevated if necessary). Temporary DOS drive mappings
+keep canonical source-backup fixtures inside disposable directories.
+
+Metadata parsing uses the vendored MIT-licensed
+[nlohmann/json 3.12.0](https://github.com/nlohmann/json/releases/tag/v3.12.0)
+in `third_party/nlohmann`; builds do not download dependencies.
 
 The installer registers CLSID `{9B6ED281-384A-4DBF-98C0-D26B6D41B352}` as an
 apartment-threaded in-process server and assigns it to `ExplorerCommandHandler`

@@ -54,6 +54,8 @@ EXPCMDSTATE state(IExplorerCommand* subject, IShellItemArray* items);
 void setEnabled(DWORD enabled);
 void junction(const fs::path& link, const fs::path& target);
 
+#include "ManagedSelections.h"
+
 void enables_one_file() {
     Fixture fixture;
     const auto path = fixture.file(L"game.bin");
@@ -99,6 +101,28 @@ void defers_filesystem_and_preference_reads() {
     setEnabled(1);
     require(result == E_PENDING, "the UI-thread query must defer all inspection");
     require(output == ECS_HIDDEN, "a deferred query must initialize its output");
+}
+
+void uses_cached_title_and_tooltip_without_reinspection() {
+    Fixture fixture;
+    const auto path = fixture.file(L"game");
+    const auto items = selection({path});
+    const auto subject = command();
+    require(state(subject.Get(), items.Get()) == ECS_ENABLED, "fixture must resolve promotion");
+    fs::remove(path);
+    setEnabled(0);
+    PWSTR title = nullptr;
+    PWSTR tooltip = nullptr;
+    const auto titleResult = subject->GetTitle(items.Get(), &title);
+    const auto tooltipResult = subject->GetToolTip(items.Get(), &tooltip);
+    setEnabled(1);
+    const std::wstring titleText(title == nullptr ? L"" : title);
+    const std::wstring tooltipText(tooltip == nullptr ? L"" : tooltip);
+    CoTaskMemFree(title);
+    CoTaskMemFree(tooltip);
+    require(titleResult == S_OK && titleText == L"Promote with GameTier" && tooltipResult == S_OK &&
+        tooltipText == L"Review promotion to your game drive", "UI metadata must use the cached decision without reinspection");
+    require(subject->Invoke(items.Get(), nullptr) == HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED), "invoke must still revalidate removed selection");
 }
 
 void hides_filesystem_root() {
@@ -594,11 +618,29 @@ int wmain(int argc, wchar_t** argv) {
     canUnload = reinterpret_cast<CanUnload>(GetProcAddress(library, "DllCanUnloadNow"));
     require(getClassObject != nullptr && canUnload != nullptr, "find COM exports");
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
+        {"managed original, destination and descendants", demotes_verified_original_destination_and_descendants},
+        {"managed backup folder and descendants", demotes_backup_game_folder_and_descendants},
+        {"restore missing target", restores_backup_when_target_missing},
+        {"independent backup restoration", restores_independent_backup_without_valid_index},
+        {"removed destination parent", restores_after_destination_parent_removed},
+        {"redirected destination parent", hides_redirected_destination_parent},
+        {"interrupted and broken relationships", hides_interrupted_and_broken_relationships},
+        {"unsafe backup restoration", hides_unsafe_backup_states},
+        {"invalid index documents", hides_invalid_index_documents},
+        {"unsafe backup blocks demotion", rejects_backup_invalidating_completed_promotion},
+        {"dynamic launch and restoration revalidation", launches_dynamic_actions_and_revalidates},
+        {"changed menu action", rejects_changed_menu_action},
+        {"alias to another game", rejects_alias_to_another_managed_game},
+        {"whole game beneath embedded markers", identifies_whole_game_beneath_embedded_markers},
+        {"managed reparse paths and metadata", rejects_managed_reparse_metadata_and_descendants},
+        {"invalid index records", rejects_invalid_index_records},
+        {"invalid backup documents", rejects_invalid_backup_documents},
         {"one file", enables_one_file},
         {"one directory, bounded inspection", enables_one_directory_without_scanning_descendants},
         {"empty selection", hides_empty_selection},
         {"multiple selections", hides_multiple_selections},
         {"deferred inspection", defers_filesystem_and_preference_reads},
+        {"cached title and tooltip", uses_cached_title_and_tooltip_without_reinspection},
         {"volume root", hides_filesystem_root},
         {"missing metadata", hides_missing_metadata},
         {"selected marker", hides_selected_directory_marker},

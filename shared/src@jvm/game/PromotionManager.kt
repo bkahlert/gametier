@@ -4,6 +4,7 @@ import com.bkahlert.gametier.files.FileMover
 import com.bkahlert.gametier.files.FileTreeSnapshot
 import com.bkahlert.gametier.files.TransferProgress
 import com.bkahlert.gametier.files.TransferPhase
+import com.bkahlert.gametier.files.isWindowsReparsePoint
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.appSettingsFile
 import com.bkahlert.gametier.settings.getAppSettings
@@ -39,18 +40,52 @@ class PromotionManager internal constructor(
         serialized { register(directory) }
     }
 
-    suspend fun inventory(): List<DestinationInventory> = serialized {
+    suspend fun inventory(): List<DestinationInventory> = serialized { inspect() }
+
+    suspend fun findPromotion(selection: Path): Promotion? = serialized {
+        val entry = canonicalGameEntry(selection)
+        if (!gameEntryExists(entry)) throw IOException("Selection is missing: $selection")
+        val link = Files.isSymbolicLink(entry)
+        val resolved = when {
+            link -> entry.parent.resolve(Files.readSymbolicLink(entry)).normalize()
+            isRealGameEntry(entry) -> entry.toRealPath()
+            else -> return@serialized null
+        }
+        val directories = generateSequence(resolved.parent) { it.parent }.filter {
+            gameEntryExists(it.resolve(PROMOTION_INDEX_NAME))
+        }.toList()
+        val promotion = inspect(directories).flatMap { it.promotions }.singleOrNull { promotion ->
+            if (link) entry == promotion.original
+            else resolved.startsWith(promotion.destination) ||
+                resolved.startsWith(backups.dataLocation(promotion.original).parent)
+        } ?: return@serialized null
+        generateSequence(selection.toAbsolutePath().normalize().parent) { it.parent }.forEach { ancestor ->
+            if (isWindowsReparsePoint(ancestor) || Files.isSymbolicLink(ancestor)) {
+                if (!Files.isSymbolicLink(ancestor) || canonicalGameEntry(ancestor) != promotion.original ||
+                    relationshipProblem(promotion.original, promotion.destination) != null) {
+                    throw IOException("Selection passes through an unrelated or redirected link: $ancestor")
+                }
+            }
+        }
+        requireOrdinaryParents(promotion.original.parent)
+        requireOrdinaryParents(promotion.destination.parent)
+        val record = backups.read(promotion.original)
+        if (record != null && gameEntryExists(record.staging)) throw IOException("Interrupted demotion staging exists: ${record.staging}")
+        promotion
+    }
+
+    private suspend fun inspect(additionalDirectories: List<Path> = emptyList()): List<DestinationInventory> {
         val discovered = backups.discover()
         val directories = try {
-            settings.promotionFolders.first() + listOfNotNull(settings.defaultPromotionFolder.first())
+            settings.promotionFolders.first() + listOfNotNull(settings.defaultPromotionFolder.first()) + additionalDirectories.map(Path::toString)
         } catch (error: Exception) {
-            if (error is CancellationException || discovered.isEmpty()) throw error
-            emptySet<String>()
+            if (error is CancellationException || (discovered.isEmpty() && additionalDirectories.isEmpty())) throw error
+            additionalDirectories.map(Path::toString).toSet()
         }
         val inspected = directories.map { PromotionInventory.inspect(Path.of(it)) }.distinctBy { it.directory }
         val all = inspected + discovered.map { it.destination.parent }.distinct().filter { path -> inspected.none { it.directory == path } }
             .map { PromotionInventory.inspect(it).copy(directory = it) }
-        all.map { inventory ->
+        return all.map { inventory ->
             val sourceRecords = discovered.filter { it.destination.parent == inventory.directory }
             val promotions = inventory.promotions.map { promotion ->
                 try {

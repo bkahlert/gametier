@@ -4,6 +4,7 @@ import com.bkahlert.gametier.game.Promotion
 import com.bkahlert.gametier.game.PromotionCondition
 import com.bkahlert.gametier.game.DestinationStatus
 import com.bkahlert.gametier.game.SymlinkPreflightException
+import com.bkahlert.gametier.game.TransferState
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.validatePromotionFolder
 import java.io.IOException
@@ -206,6 +207,26 @@ class AppController internal constructor(
         clearReview()
         requests.forEach(::enqueue)
         ensureWorker()
+    }
+
+    fun openManagedSelection(selection: Path, kind: TransferKind) = action {
+        try {
+            require(kind != TransferKind.PROMOTE)
+            val promotion = operations.findPromotion(selection)
+                ?: throw IOException("Selection no longer identifies a managed game: $selection")
+            val available = promotion.state == TransferState.PROMOTED && when (kind) {
+                TransferKind.DEMOTE -> promotion.condition == PromotionCondition.PROMOTED && !promotion.canRestoreBackup
+                TransferKind.RESTORE_BACKUP -> promotion.canRestoreBackup
+                TransferKind.PROMOTE -> false
+            }
+            if (!available) throw IOException(promotion.problem ?: "The requested action is no longer available: $selection")
+            edit { it.copy(screen = AppScreen.PROMOTIONS,
+                demotion = promotion.takeIf { kind == TransferKind.DEMOTE },
+                backupRestoration = promotion.takeIf { kind == TransferKind.RESTORE_BACKUP }) }
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            edit { it.copy(inputError = error, closeWhenFinished = false) }
+        }
     }
 
     fun requestDemote(promotion: Promotion) = action {
