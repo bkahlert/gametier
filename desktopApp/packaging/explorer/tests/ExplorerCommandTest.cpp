@@ -388,6 +388,15 @@ void launches_adjacent_application_with_exact_unicode_path() {
     SetEnvironmentVariableW(L"GAMETIER_TEST_CAPTURE", capture.c_str());
     SetEnvironmentVariableW(L"GAMETIER_TEST_EVENT", eventName.c_str());
     const auto items = selection({path});
+    ComPtr<IShellItem> selected;
+    checked(items->GetItemAt(0, &selected));
+    PWSTR rawPath = nullptr;
+    checked(selected->GetDisplayName(SIGDN_FILESYSPATH, &rawPath));
+    const std::wstring selectedPath(rawPath);
+    CoTaskMemFree(rawPath);
+    require(fs::equivalent(fs::path(selectedPath), path), "shell selection must identify the fixture");
+    require(selectedPath.find(L"game space \u00e4\u65e5\\data & payload.bin") != std::wstring::npos,
+        "shell selection must retain Unicode, spaces and ampersand");
     const auto subject = command();
     const auto result = subject->Invoke(items.Get(), nullptr);
     const auto completed = WaitForSingleObject(event, 10000);
@@ -398,8 +407,15 @@ void launches_adjacent_application_with_exact_unicode_path() {
     require(completed == WAIT_OBJECT_0, "launched application must finish argument capture");
     std::ifstream input(capture, std::ios::binary);
     const std::string bytes{std::istreambuf_iterator<char>(input), {}};
-    const std::wstring expected = L"--promote\n" + path.native();
+    const std::wstring expected = L"--promote\n" + selectedPath;
     const std::string expectedBytes(reinterpret_cast<const char*>(expected.data()), expected.size() * sizeof(wchar_t));
+    if (bytes != expectedBytes) {
+        std::cerr << "Expected UTF-16 bytes:";
+        for (const unsigned char byte : expectedBytes) std::cerr << ' ' << std::hex << static_cast<unsigned>(byte);
+        std::cerr << "\nCaptured UTF-16 bytes:";
+        for (const unsigned char byte : bytes) std::cerr << ' ' << std::hex << static_cast<unsigned>(byte);
+        std::cerr << std::dec << '\n';
+    }
     require(bytes == expectedBytes, "application must receive exactly --promote and the absolute Unicode path");
 }
 
