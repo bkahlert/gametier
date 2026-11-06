@@ -3,6 +3,9 @@ package com.bkahlert.gametier.settings
 import com.bkahlert.gametier.testsupport.filesystem.testVolumeCases
 
 import androidx.datastore.core.CorruptionException
+import androidx.datastore.preferences.core.PreferencesFileSerializer
+import androidx.datastore.preferences.core.preferencesOf
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE
 import com.sun.nio.file.ExtendedOpenOption.NOSHARE_READ
 import io.kotest.assertions.assertSoftly
@@ -33,6 +36,62 @@ import org.junit.jupiter.api.TestFactory
 class AppSettingsIntegrationTest {
     @Nested
     inner class Persistence {
+        @Test
+        fun `on reopening after replacement and clear remembered folders are retained`() = withSettingsFile { file ->
+            val first = file.parent.resolve("missing/../Games").toString() + "/"
+            val second = file.parent.resolve("OtherGames").toString()
+            val remembered = file.parent.resolve("OfflineGames").toString()
+            withSettingsStore(file) { settings ->
+                settings.setDefaultPromotionFolder(first)
+                settings.setDefaultPromotionFolder(second)
+                settings.rememberPromotionFolder(remembered)
+                val result = settings.clearDefaultPromotionFolder()
+
+                result shouldBe Unit
+            }
+
+            val result = withSettingsStore(file) { settings ->
+                settings.defaultPromotionFolder.first() to settings.promotionFolders.first()
+            }
+
+            result shouldBe (null to setOf(remembered))
+        }
+
+        @Test
+        fun `on remembering without a default the folder survives reopening`() = withSettingsFile { file ->
+            val folder = file.parent.resolve("OfflineGames").toString()
+
+            val saved = withSettingsStore(file) { it.rememberPromotionFolder(folder) }
+            val result = withSettingsStore(file) {
+                it.defaultPromotionFolder.first() to it.promotionFolders.first()
+            }
+
+            assertSoftly {
+                saved shouldBe Unit
+                result shouldBe (null to setOf(folder))
+            }
+        }
+
+        @Test
+        fun `on clearing a persisted legacy default it stays absent from history after reopening`() = withSettingsFile { file ->
+            val folder = file.parent.resolve("Games").toString()
+            Files.newOutputStream(file).use {
+                PreferencesFileSerializer.writeTo(
+                    preferencesOf(stringPreferencesKey("default_promotion_folder") to folder), it,
+                )
+            }
+
+            val cleared = withSettingsStore(file) { it.clearDefaultPromotionFolder() }
+            val result = withSettingsStore(file) {
+                it.defaultPromotionFolder.first() to it.promotionFolders.first()
+            }
+
+            assertSoftly {
+                cleared shouldBe Unit
+                result shouldBe (null to emptySet())
+            }
+        }
+
         @Test
         fun `on missing storage and parents the preference starts unset`() = withSettingsFile { file ->
             val nested = file.parent.resolve("LocalAppData/GameTier/settings.preferences_pb")
@@ -129,14 +188,52 @@ class AppSettingsIntegrationTest {
                 result
             }
 
-            val result = withSettingsStore(file) { it.defaultPromotionFolder.first() }
+            val result = withSettingsStore(file) { it.defaultPromotionFolder.first() to it.promotionFolders.first() }
 
-            result shouldBe committed
+            result shouldBe (committed to emptySet())
+        }
+
+        @Test
+        fun `on concurrent remember operations every committed folder survives reopening`() = withSettingsFile { file ->
+            val folders = List(16) { file.parent.resolve("Games-$it").toString() }
+            val saved = withSettingsStore(file) { settings ->
+                coroutineScope {
+                    folders.map { folder ->
+                        async(Dispatchers.Default) { settings.rememberPromotionFolder(folder) }
+                    }.awaitAll()
+                }
+            }
+
+            val result = withSettingsStore(file) {
+                it.defaultPromotionFolder.first() to it.promotionFolders.first()
+            }
+
+            assertSoftly {
+                saved shouldContainExactly List(16) { Unit }
+                result shouldBe (null to folders.toSet())
+            }
         }
     }
 
     @Nested
     inner class Failures {
+        @Test
+        fun `on a blocked storage parent remembering fails and preserves the blocker`() = withSettingsFile { file ->
+            val blocker = Files.writeString(file.parent.resolve("blocked"), "retained")
+
+            val error = shouldThrow<IOException> {
+                withSettingsStore(blocker.resolve("settings.preferences_pb")) {
+                    it.rememberPromotionFolder(file.parent.resolve("Games").toString())
+                }
+            }
+            val result = Files.readString(blocker)
+
+            assertSoftly {
+                error.message.isNullOrBlank() shouldBe false
+                result shouldBe "retained"
+            }
+        }
+
         @Test
         fun `on a blocked storage parent reading reports an error instead of unset`() = withSettingsFile { file ->
             val blocker = Files.writeString(file.parent.resolve("blocked"), "retained")
@@ -191,6 +288,7 @@ class AppSettingsIntegrationTest {
                 val recovered = file.parent.resolve("RecoveredGames").toString()
                 withSettingsStore(file) { settings ->
                     settings.setDefaultPromotionFolder(original)
+                    settings.rememberPromotionFolder(original)
                     coroutineScope {
                         val observations = Channel<String?>(Channel.UNLIMITED)
                         val observer = launch(start = UNDISPATCHED) {
@@ -203,14 +301,20 @@ class AppSettingsIntegrationTest {
                                     settings.setDefaultPromotionFolder(replacement)
                                 }
                                 val afterUpdate = settings.defaultPromotionFolder.first()
+                                val rememberError = shouldThrow<IOException> {
+                                    settings.rememberPromotionFolder(replacement)
+                                }
                                 val clearError = shouldThrow<IOException> { settings.clearDefaultPromotionFolder() }
                                 val result = settings.defaultPromotionFolder.first()
+                                val history = settings.promotionFolders.first()
 
                                 assertSoftly {
                                     updateError.message.isNullOrBlank() shouldBe false
                                     clearError.message.isNullOrBlank() shouldBe false
+                                    rememberError.message.isNullOrBlank() shouldBe false
                                     afterUpdate shouldBe original
                                     result shouldBe original
+                                    history shouldBe setOf(original)
                                 }
                             }
                             val saved = settings.setDefaultPromotionFolder(recovered)
@@ -229,9 +333,11 @@ class AppSettingsIntegrationTest {
                     }
                 }
 
-                val result = withSettingsStore(file) { it.defaultPromotionFolder.first() }
+                val result = withSettingsStore(file) {
+                    it.defaultPromotionFolder.first() to it.promotionFolders.first()
+                }
 
-                result shouldBe recovered
+                result shouldBe (recovered to setOf(original))
             }
 
         @Test
@@ -260,14 +366,19 @@ class AppSettingsIntegrationTest {
             runBlocking {
                 val file = root.resolve("GameTier/settings.preferences_pb")
                 val folder = root.resolve("Games").toString()
-                withSettingsStore(file) { it.setDefaultPromotionFolder(folder) }
+                withSettingsStore(file) {
+                    it.setDefaultPromotionFolder(folder)
+                    it.rememberPromotionFolder(folder)
+                }
                 val saved = withSettingsStore(file) { it.defaultPromotionFolder.first() }
                 withSettingsStore(file) { it.clearDefaultPromotionFolder() }
                 val cleared = withSettingsStore(file) { it.defaultPromotionFolder.first() }
+                val history = withSettingsStore(file) { it.promotionFolders.first() }
 
                 assertSoftly {
                     saved shouldBe folder
                     cleared shouldBe null
+                    history shouldBe setOf(folder)
                 }
             }
         }
