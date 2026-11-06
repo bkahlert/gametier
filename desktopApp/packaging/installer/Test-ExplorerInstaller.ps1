@@ -55,7 +55,10 @@ $windowsInstaller = New-Object -ComObject WindowsInstaller.Installer
 try {
     $products = $windowsInstaller.GetType().InvokeMember('RelatedProducts', [Reflection.BindingFlags]::GetProperty,
         $null, $windowsInstaller, @('{9db43bc2-4812-4649-a1a0-66489bdf19c0}'))
-    if ($products.Count -ne 0) { throw 'Installer lifecycle tests require a user without an existing GameTier installation.' }
+    try {
+        $count = $products.GetType().InvokeMember('Count', [Reflection.BindingFlags]::GetProperty, $null, $products, $null)
+        if ($count -ne 0) { throw 'Installer lifecycle tests require a user without an existing GameTier installation.' }
+    } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($products) | Out-Null }
 } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($windowsInstaller) | Out-Null }
 foreach ($path in $registrationKeys) {
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path)
