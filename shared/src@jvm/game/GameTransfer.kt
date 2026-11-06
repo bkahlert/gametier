@@ -15,6 +15,7 @@ internal class GameFileOperations(
     val move: (Path, Path) -> Unit = defaultMove,
     val createLink: (Path, Path) -> Unit = SymlinkCreator::create,
     val delete: (Path) -> Unit = { Files.delete(it) },
+    val copy: (Path, Path, (TransferProgress) -> Unit) -> Unit = FileMover::copy,
 ) {
     fun move(source: Path, destination: Path, onProgress: (TransferProgress) -> Unit) {
         if (move === defaultMove) FileMover.move(source, destination, onProgress)

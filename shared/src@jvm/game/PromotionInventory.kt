@@ -14,6 +14,8 @@ data class Promotion(
     val state: TransferState,
     val condition: PromotionCondition,
     val problem: String? = null,
+    val backup: Path? = null,
+    val canRestoreBackup: Boolean = false,
 )
 
 data class DestinationInventory(

@@ -18,6 +18,7 @@ interface PromotionOperations {
     suspend fun inventory(): List<DestinationInventory>
     suspend fun promote(original: Path, directory: Path)
     suspend fun demote(directory: Path, name: String)
+    suspend fun restoreBackup(original: Path, onProgress: (TransferProgress) -> Unit = {})
     suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit) = promote(original, directory)
     suspend fun demote(directory: Path, name: String, onProgress: (TransferProgress) -> Unit) = demote(directory, name)
     suspend fun destinationProblem(directory: Path): String?
@@ -32,6 +33,7 @@ class ManagerPromotionOperations(
     override suspend fun demote(directory: Path, name: String) = manager.demote(directory, name)
     override suspend fun promote(original: Path, directory: Path, onProgress: (TransferProgress) -> Unit) = manager.promote(original, directory, onProgress)
     override suspend fun demote(directory: Path, name: String, onProgress: (TransferProgress) -> Unit) = manager.demote(directory, name, onProgress)
+    override suspend fun restoreBackup(original: Path, onProgress: (TransferProgress) -> Unit) = manager.restoreBackup(original, onProgress)
     override suspend fun destinationProblem(directory: Path): String? = withContext(Dispatchers.IO) {
         val inventory = PromotionInventory.inspect(directory)
         when (inventory.status) {

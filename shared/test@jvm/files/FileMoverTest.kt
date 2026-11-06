@@ -20,6 +20,217 @@ import org.junit.jupiter.api.Nested
 
 class FileMoverTest {
     @Nested
+    inner class Copy {
+        @Test
+        fun `on a same volume file the source remains independent`() = withTestDirectory { root ->
+            val source = Files.writeString(root.resolve("source"), "snapshot")
+            val destination = root.resolve("destination")
+            val timestamp = FileTime.fromMillis(1_600_000_000_000)
+            Files.setLastModifiedTime(source, timestamp)
+            val updates = mutableListOf<TransferProgress>()
+
+            val result = FileMover.copy(source, destination, updates::add)
+
+            assertSoftly {
+                result shouldBe Unit
+                Files.readString(source) shouldBe "snapshot"
+                Files.readString(destination) shouldBe "snapshot"
+                Files.getLastModifiedTime(destination) shouldBe timestamp
+                updates.last() shouldBe TransferProgress(TransferPhase.FINALIZING, 8, 8)
+            }
+            Files.writeString(destination, "changed")
+            Files.readString(source) shouldBe "snapshot"
+        }
+
+        @Test
+        fun `on a directory nested data and empty directories remain at both locations`() = withTestDirectory { root ->
+            val source = createTestTree(root.resolve("source"))
+            val destination = root.resolve("destination")
+
+            val result = FileMover.copy(source, destination)
+
+            assertSoftly {
+                result shouldBe Unit
+                assertTestTree(source)
+                assertTestTree(destination)
+            }
+        }
+
+        @Test
+        fun `on source mutation verification fails without deleting either copy`() = withTestDirectory { root ->
+            val source = Files.writeString(root.resolve("source"), "before")
+            val destination = root.resolve("destination")
+            var changed = false
+
+            val result = shouldThrow<IOException> {
+                FileMover.copy(source, destination) { progress ->
+                    if (!changed && progress.phase == TransferPhase.FINALIZING) {
+                        changed = true
+                        Files.writeString(source, "new source contents")
+                    }
+                }
+            }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "Source changed"
+                Files.readString(source) shouldBe "new source contents"
+                Files.readString(destination) shouldBe "before"
+            }
+        }
+
+        @Test
+        fun `on an observer failure the source is retained`() = withTestDirectory { root ->
+            val source = Files.writeString(root.resolve("source"), "snapshot")
+            val failure = IOException("observer failed")
+
+            val result = shouldThrow<IOException> {
+                FileMover.copy(source, root.resolve("destination")) {
+                    if (it.transferredBytes > 0) throw failure
+                }
+            }
+
+            assertSoftly {
+                generateSequence(result as Throwable) { it.cause }.last() shouldBe failure
+                Files.readString(source) shouldBe "snapshot"
+            }
+        }
+
+        @Test
+        fun `on an existing destination neither file is overwritten`() = withTestDirectory { root ->
+            val source = Files.writeString(root.resolve("source"), "snapshot")
+            val destination = Files.writeString(root.resolve("destination"), "occupied")
+
+            val result = shouldThrow<IOException> { FileMover.copy(source, destination) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "already exists"
+                Files.readString(source) shouldBe "snapshot"
+                Files.readString(destination) shouldBe "occupied"
+            }
+        }
+
+        @Test
+        fun `on another provider the source and copied tree both remain`() = withTestDirectory { root ->
+            withTestArchive(root) { archive ->
+                val source = createTestTree(root.resolve("source"))
+
+                val result = FileMover.copy(source, archive.resolve("destination"))
+
+                assertSoftly {
+                    result shouldBe Unit
+                    assertTestTree(source)
+                    assertTestTree(archive.resolve("destination"))
+                }
+            }
+        }
+
+        @Test
+        fun `on junction contents copying refuses to traverse other data`() = withTestDirectory { root ->
+            org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val outside = Files.createDirectory(root.resolve("outside"))
+            Files.writeString(outside.resolve("save"), "keep")
+            val source = Files.createDirectory(root.resolve("source"))
+            createTestJunction(source.resolve("nested"), outside)
+
+            val result = shouldThrow<IOException> { FileMover.copy(source, root.resolve("destination")) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "Unsupported"
+                Files.readString(outside.resolve("save")) shouldBe "keep"
+                Files.exists(root.resolve("destination")) shouldBe false
+            }
+        }
+    }
+
+    @Nested
+    inner class Deletion {
+        @Test
+        fun `on changed tree contents guarded cleanup preserves every entry`() = withTestDirectory { root ->
+            val tree = createTestTree(root.resolve("tree"))
+            val expected = FileMover.snapshot(tree)
+            Files.writeString(tree.resolve("new-save"), "new progress")
+
+            val result = shouldThrow<IOException> { FileMover.deleteTree(tree, expected) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "changed"
+                Files.readString(tree.resolve("new-save")) shouldBe "new progress"
+                Files.readString(tree.resolve("game.dat")) shouldBe "game data"
+            }
+        }
+
+        @Test
+        fun `on a replaced root guarded cleanup preserves the replacement`() = withTestDirectory { root ->
+            val file = Files.writeString(root.resolve("file"), "before")
+            val expected = FileMover.snapshot(file)
+            Files.move(file, root.resolve("saved"))
+            Files.writeString(file, "replacement")
+
+            val result = shouldThrow<IOException> { FileMover.deleteTree(file, expected) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "changed"
+                Files.readString(file) shouldBe "replacement"
+                Files.readString(root.resolve("saved")) shouldBe "before"
+            }
+        }
+
+        @Test
+        fun `on a redirected parent cleanup refuses the outside tree`() = withTestDirectory { root ->
+            org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val outside = Files.createDirectory(root.resolve("outside"))
+            val tree = createTestTree(outside.resolve("game"))
+            val alias = root.resolve("backup-alias")
+            createTestJunction(alias, outside)
+
+            val result = shouldThrow<IOException> { FileMover.deleteTree(alias.resolve("game")) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "ordinary directory"
+                assertTestTree(tree)
+            }
+        }
+
+        @Test
+        fun `on an ordinary tree read only files can be removed`() = withTestDirectory { root ->
+            val tree = createTestTree(root.resolve("tree"))
+            Files.getFileAttributeView(tree.resolve("game.dat"), java.nio.file.attribute.DosFileAttributeView::class.java)
+                ?.setReadOnly(true)
+
+            val result = FileMover.deleteTree(tree)
+
+            result shouldBe Unit
+            Files.exists(tree, NOFOLLOW_LINKS) shouldBe false
+        }
+
+        @Test
+        fun `on a missing tree deletion fails rather than pretending cleanup succeeded`() = withTestDirectory { root ->
+            val result = shouldThrow<IOException> { FileMover.deleteTree(root.resolve("missing")) }
+
+            result.message.orEmpty().isNotBlank() shouldBe true
+        }
+
+        @Test
+        fun `on nested junctions cleanup refuses before deleting ordinary entries`() = withTestDirectory { root ->
+            org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+            val outside = Files.createDirectory(root.resolve("outside"))
+            Files.writeString(outside.resolve("save"), "keep")
+            val tree = createTestTree(root.resolve("tree"))
+            createTestJunction(tree.resolve("junction"), outside)
+
+            val result = shouldThrow<IOException> { FileMover.deleteTree(tree) }
+
+            assertSoftly {
+                result.message.orEmpty() shouldContain "Unsupported"
+                Files.readString(tree.resolve("game.dat")) shouldBe "game data"
+                Files.readString(tree.resolve("nested/config.ini")) shouldBe "settings"
+                Files.exists(tree.resolve("junction"), NOFOLLOW_LINKS) shouldBe true
+                Files.readString(outside.resolve("save")) shouldBe "keep"
+            }
+        }
+    }
+
+    @Nested
     inner class Progress {
         @Test
         fun `on a same volume move only stages are reported`() = withTestDirectory { root ->

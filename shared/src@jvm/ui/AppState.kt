@@ -6,7 +6,7 @@ import com.bkahlert.gametier.files.TransferProgress
 import java.nio.file.Path
 
 enum class AppScreen { PROMOTIONS, SETTINGS }
-enum class TransferKind { PROMOTE, DEMOTE }
+enum class TransferKind { PROMOTE, DEMOTE, RESTORE_BACKUP }
 enum class ActivityStatus { QUEUED, RUNNING, SUCCEEDED, FAILED, STOPPED }
 
 data class TransferRequest(
@@ -14,6 +14,7 @@ data class TransferRequest(
     val original: Path,
     val directory: Path,
     val destination: Path,
+    val backup: Path? = null,
 )
 
 data class ActivityItem(
@@ -42,6 +43,7 @@ data class AppState(
     val preparing: Boolean = false,
     val reviewError: Throwable? = null,
     val demotion: Promotion? = null,
+    val backupRestoration: Promotion? = null,
     val activity: List<ActivityItem> = emptyList(),
     val activityExpanded: Boolean = false,
     val search: String = "",

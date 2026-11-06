@@ -28,6 +28,207 @@ import org.junit.jupiter.api.Nested
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppControllerTest {
     @Nested
+    inner class BackupRecovery {
+        @Test
+        fun `on running restoration activity shows progress and close waits for completion`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            val progress = TransferProgress(TransferPhase.MOVING)
+            val operations = recoveryOperations().apply {
+                transfer = { gate.await() }
+                restoreProgress = progress
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            runCurrent()
+
+            app.closeWhenFinished()
+            runCurrent()
+            val running = app.state.value
+            gate.complete(Unit)
+            runCurrent()
+            val completed = app.state.value
+
+            assertSoftly {
+                running.activity.single().status shouldBe ActivityStatus.RUNNING
+                running.activity.single().progress shouldBe progress
+                running.exitRequested shouldBe false
+                completed.activity.single().status shouldBe ActivityStatus.SUCCEEDED
+                completed.exitRequested shouldBe true
+            }
+        }
+
+        @Test
+        fun `on request recovery waits for confirmation and cancel discards it`() = runTest {
+            val operations = recoveryOperations()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+
+            app.requestRestoreBackup(recoverable)
+            runCurrent()
+            val requested = app.state.value
+            app.cancelRestoreBackup()
+            app.confirmRestoreBackup()
+            runCurrent()
+            val cancelled = app.state.value
+
+            assertSoftly {
+                requested.backupRestoration shouldBe recoverable
+                requested.demotion shouldBe null
+                requested.activity shouldBe emptyList()
+                cancelled.backupRestoration shouldBe null
+                cancelled.activity shouldBe emptyList()
+                operations.started shouldBe emptyList()
+            }
+        }
+
+        @Test
+        fun `on ineligible backup request no recovery confirmation opens`() = runTest {
+            val app = AppController(backgroundScope, AppTestSettings(), recoveryOperations(), readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+
+            app.requestRestoreBackup(recoverable.copy(canRestoreBackup = false))
+            app.confirmRestoreBackup()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                result.backupRestoration shouldBe null
+                result.activity shouldBe emptyList()
+            }
+        }
+
+        @Test
+        fun `on confirm recovery joins serialized work and reports progress without destination checks`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            val progress = TransferProgress(TransferPhase.MOVING)
+            val operations = recoveryOperations().apply {
+                transfer = { if (it.kind == TransferKind.PROMOTE) gate.await() }
+                restoreProgress = progress
+                health = { "Destination unavailable" }
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.select(listOf(appPath("other")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            app.confirmRestoreBackup()
+            runCurrent()
+            val queued = app.state.value
+            gate.complete(Unit)
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                queued.activity.map { it.status } shouldBe listOf(ActivityStatus.RUNNING, ActivityStatus.QUEUED)
+                queued.backupRestoration shouldBe null
+                result.activity.map { it.status } shouldBe listOf(ActivityStatus.SUCCEEDED, ActivityStatus.SUCCEEDED)
+                result.activity.last().request.original shouldBe recoverable.original
+                result.activity.last().request.kind shouldBe TransferKind.RESTORE_BACKUP
+                result.activity.last().request.backup shouldBe recoverable.backup
+                result.activity.last().progress shouldBe progress
+                operations.started.map { it.kind } shouldBe listOf(TransferKind.PROMOTE, TransferKind.RESTORE_BACKUP)
+            }
+        }
+
+        @Test
+        fun `on recovery failure activity retains the error and stays open`() = runTest {
+            val failure = IOException("Snapshot cannot be installed")
+            val progress = TransferProgress(TransferPhase.PREPARING)
+            val operations = recoveryOperations().apply {
+                transfer = { throw failure }
+                restoreProgress = progress
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            app.closeWhenFinished()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                result.activity.single().status shouldBe ActivityStatus.FAILED
+                result.activity.single().error shouldBeSameInstanceAs failure
+                result.activity.single().progress shouldBe progress
+                result.activityExpanded shouldBe true
+                result.exitRequested shouldBe false
+                result.promotions shouldBe listOf(recoverable)
+            }
+        }
+
+        @Test
+        fun `on destination failure queued source recovery still runs`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            val operations = recoveryOperations().apply {
+                health = { "Destination unavailable" }
+                transfer = { if (it.kind == TransferKind.PROMOTE) { gate.await(); throw IOException("Destination disconnected") } }
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.select(listOf(appPath("other")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+            val result = app.state.value
+
+            result.activity.map { it.status } shouldBe listOf(ActivityStatus.FAILED, ActivityStatus.SUCCEEDED)
+        }
+
+        @Test
+        fun `on completed recovery unavailable former destination does not reserve restored game`() = runTest {
+            val operations = recoveryOperations()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            runCurrent()
+
+            app.select(listOf(recoverable.original))
+            runCurrent()
+            app.setReviewDirectory(appPath("replacement"))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                result.activity.map { it.status } shouldBe listOf(ActivityStatus.SUCCEEDED, ActivityStatus.SUCCEEDED)
+                operations.started.map { it.kind } shouldBe listOf(TransferKind.RESTORE_BACKUP, TransferKind.PROMOTE)
+                operations.started.last().destination shouldBe appPath("replacement/game")
+            }
+        }
+
+        @Test
+        fun `on failed restoration retry remains possible while destination is unavailable`() = runTest {
+            val operations = recoveryOperations().apply { transfer = { throw IOException("Installation failed") } }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            runCurrent()
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            runCurrent()
+            operations.transfer = {}
+
+            app.requestRestoreBackup(recoverable)
+            app.confirmRestoreBackup()
+            runCurrent()
+            val result = app.state.value
+
+            result.activity.map { it.status } shouldBe listOf(ActivityStatus.FAILED, ActivityStatus.SUCCEEDED)
+        }
+    }
+
+    @Nested
     inner class Progress {
         @Test
         fun `on promotion progress active row updates and completed result ignores late callbacks`() = runTest {
@@ -1491,4 +1692,13 @@ class AppControllerTest {
             }
         }
     }
+}
+
+private val recoverable = Promotion(
+    appPath("library/game"), appPath("destination/game"), TransferState.PROMOTED, PromotionCondition.NEEDS_ATTENTION,
+    backup = appPath("backups/game/data"), canRestoreBackup = true,
+)
+
+private fun recoveryOperations() = AppTestOperations().apply {
+    snapshot = listOf(DestinationInventory(recoverable.destination.parent, DestinationStatus.UNAVAILABLE, listOf(recoverable)))
 }

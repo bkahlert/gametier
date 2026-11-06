@@ -125,7 +125,7 @@ internal fun replacePromotionIndex(temporary: Path, file: Path) {
 
 private val jsonObjectTokens = Regex("\"(?:\\\\.|[^\"\\\\])*+\"|[{}]")
 
-private fun rejectDuplicateProperties(validJson: String) {
+internal fun rejectDuplicateProperties(validJson: String) {
     val objects = ArrayDeque<MutableSet<String>>()
     for (token in jsonObjectTokens.findAll(validJson)) {
         when (token.value) {

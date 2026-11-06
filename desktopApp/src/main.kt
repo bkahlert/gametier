@@ -80,7 +80,8 @@ fun main(args: Array<String>) {
                     isDragging = dragging,
                     modifier = Modifier.desktopFileDrop(
                         enabled = !state.closeWhenFinished && !state.exitRequested &&
-                            state.pendingSelection.isEmpty() && state.demotion == null && !state.closePrompt && state.linkPermission == null,
+                            state.pendingSelection.isEmpty() && state.demotion == null && state.backupRestoration == null &&
+                            !state.closePrompt && state.linkPermission == null,
                         onDragging = { dragging = it },
                         onSelection = controller::select,
                         onError = controller::reportError,

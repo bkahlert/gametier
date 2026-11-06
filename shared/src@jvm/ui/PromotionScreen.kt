@@ -93,14 +93,8 @@ internal fun PromotionScreen(
                         notices.any { it.first.status != com.bkahlert.gametier.game.DestinationStatus.AVAILABLE } || state.inventoryError != null)
                     EmptyPromotions(empty, onAdd = { addMenu = true }, onSettings = controller::showSettings)
                 } else items(state.filteredPromotions, key = { it.destination.toString() }) { promotion ->
-                    PromotionRow(promotion, state.activity, { controller.requestDemote(promotion) }, {
-                        onDetails("${promotion.original.fileName} · ${promotionPresentation(promotion, state.activity).status}", buildString {
-                            appendLine(promotion.problem ?: "The original location links to the promoted data.")
-                            appendLine(); appendLine("Original location: ${promotion.original}")
-                            appendLine("Promoted location: ${promotion.destination}")
-                            appendLine("Recorded state: ${promotion.state.name.lowercase()}")
-                            if (promotion.problem != null) appendLine("Inspect both locations before making changes, then refresh promotions.")
-                        }.trim())
+                    PromotionRow(promotion, state.activity, { controller.requestDemote(promotion) }, { controller.requestRestoreBackup(promotion) }, {
+                        onDetails("${promotion.original.fileName} · ${promotionPresentation(promotion, state.activity).status}", promotionDetails(promotion))
                     })
                 }
             }
@@ -111,7 +105,7 @@ internal fun PromotionScreen(
 }
 
 @Composable
-private fun PromotionRow(promotion: Promotion, activity: List<ActivityItem>, onDemote: () -> Unit, onDetails: () -> Unit) {
+private fun PromotionRow(promotion: Promotion, activity: List<ActivityItem>, onDemote: () -> Unit, onRestoreBackup: () -> Unit, onDetails: () -> Unit) {
     val presentation = promotionPresentation(promotion, activity)
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -129,6 +123,7 @@ private fun PromotionRow(promotion: Promotion, activity: List<ActivityItem>, onD
                 StatusLabel(presentation.status, presentation.tone, presentation.busy)
                 Row {
                     if (presentation.canDemote) TextButton(onClick = onDemote) { Text("Demote") }
+                    if (presentation.canRestoreBackup) TextButton(onClick = onRestoreBackup) { Text("Restore backup") }
                     TextButton(onClick = onDetails) { Text("Details") }
                 }
             }
@@ -141,7 +136,7 @@ private fun EmptyPromotions(state: PromotionsEmptyState, onAdd: () -> Unit, onSe
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.padding(30.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(when (state) {
-                PromotionsEmptyState.FIRST_USE -> "Make room for your next game"
+                PromotionsEmptyState.FIRST_USE -> "Bring your games to faster storage"
                 PromotionsEmptyState.EMPTY -> "No promotions yet"
                 PromotionsEmptyState.NO_MATCHES -> "No promotions match your search"
                 PromotionsEmptyState.UNAVAILABLE -> "Some promotions cannot be listed"

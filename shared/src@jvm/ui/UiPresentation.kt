@@ -9,7 +9,8 @@ import java.util.Collections
 import java.util.IdentityHashMap
 
 internal enum class StatusTone { NORMAL, SUCCESS, WARNING, ACTIVE }
-internal data class PromotionPresentation(val status: String, val tone: StatusTone, val canDemote: Boolean, val busy: Boolean)
+internal data class PromotionPresentation(val status: String, val tone: StatusTone, val canDemote: Boolean, val busy: Boolean,
+    val canRestoreBackup: Boolean = false)
 internal data class DestinationNotice(val title: String, val details: String)
 internal enum class PromotionsEmptyState { FIRST_USE, EMPTY, NO_MATCHES, UNAVAILABLE }
 internal data class ReviewPresentation(val ready: Int, val skipped: Int, val blocked: Int, val canConfirm: Boolean)
@@ -22,9 +23,15 @@ internal fun promotionPresentation(promotion: Promotion, activity: List<Activity
     }
     return when {
         operation?.status == ActivityStatus.RUNNING -> PromotionPresentation(
-            if (operation.request.kind == TransferKind.PROMOTE) "Promoting" else "Demoting", StatusTone.ACTIVE, false, true)
+            when (operation.request.kind) {
+                TransferKind.PROMOTE -> "Promoting"
+                TransferKind.DEMOTE -> "Demoting"
+                TransferKind.RESTORE_BACKUP -> "Restoring backup"
+            }, StatusTone.ACTIVE, false, true)
         operation?.status == ActivityStatus.QUEUED -> PromotionPresentation("Queued", StatusTone.ACTIVE, false, false)
+        promotion.canRestoreBackup -> PromotionPresentation("Recoverable", StatusTone.WARNING, false, false, true)
         promotion.condition == PromotionCondition.NEEDS_ATTENTION -> PromotionPresentation("Needs attention", StatusTone.WARNING, false, false)
+        promotion.backup == null -> PromotionPresentation("Unprotected", StatusTone.WARNING, true, false)
         else -> PromotionPresentation("Promoted", StatusTone.SUCCESS, true, false)
     }
 }
@@ -41,7 +48,7 @@ internal fun destinationNotice(inventory: DestinationInventory, remembered: Set<
     return DestinationNotice(title, buildString {
         appendLine("Promotion folder: ${inventory.directory}")
         when (inventory.status) {
-            DestinationStatus.UNAVAILABLE -> appendLine("Promotions from this folder cannot be listed. Reconnect the storage and refresh promotions.")
+            DestinationStatus.UNAVAILABLE -> appendLine("Destination promotions cannot be checked. Available source backups are still shown. Reconnect the storage and refresh promotions.")
             DestinationStatus.INVALID_INDEX, DestinationStatus.MISSING_INDEX -> appendLine("GameTier cannot safely use this folder's metadata. Inspect the folder and metadata before making changes.")
             DestinationStatus.AVAILABLE -> {
                 appendLine("These items are not indexed promotions and cannot be demoted by GameTier:")
@@ -76,13 +83,34 @@ internal fun activityPresentation(items: List<ActivityItem>): ActivityPresentati
     items.count { (it.status == ActivityStatus.FAILED || it.status == ActivityStatus.STOPPED) && !it.acknowledged }, items.size)
 
 internal fun activityDetails(item: ActivityItem): String = buildString {
-    appendLine("Operation: ${if (item.request.kind == TransferKind.PROMOTE) "Promote" else "Demote"}")
+    appendLine("Operation: ${item.request.kind.label}")
     appendLine("Status: ${item.status.name.lowercase()}")
     appendLine("Original location: ${item.request.original}")
     appendLine("Promotion folder: ${item.request.directory}")
     appendLine("Promoted location: ${item.request.destination}")
+    item.request.backup?.let { appendLine("Source backup: $it") }
     item.message?.let { appendLine(); appendLine(it) }
     item.error?.let { appendLine(); append(errorDetails(it)) }
+}.trim()
+
+internal val TransferKind.label: String get() = when (this) {
+    TransferKind.PROMOTE -> "Promote"
+    TransferKind.DEMOTE -> "Demote"
+    TransferKind.RESTORE_BACKUP -> "Restore backup"
+}
+
+internal fun promotionDetails(promotion: Promotion): String = buildString {
+    appendLine(promotion.problem ?: "The original location links to the promoted data.")
+    appendLine()
+    appendLine("Original location: ${promotion.original}")
+    appendLine("Promoted location: ${promotion.destination}")
+    appendLine("Recorded state: ${promotion.state.name.lowercase()}")
+    if (promotion.backup != null) {
+        appendLine("Source backup location: ${promotion.backup}")
+        appendLine("The source backup is a promotion-time snapshot; later changes are in the promoted files.")
+    } else appendLine("No source backup. This promotion is unprotected.")
+    if (promotion.canRestoreBackup) appendLine("Restore backup returns the snapshot to the original location. Changes made after promotion will be missing.")
+    else if (promotion.problem != null) appendLine("Inspect the locations before making changes, then refresh promotions.")
 }.trim()
 
 internal fun errorDetails(error: Throwable): String = buildString {

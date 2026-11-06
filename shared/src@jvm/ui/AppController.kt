@@ -216,6 +216,16 @@ class AppController internal constructor(
         enqueue(TransferRequest(TransferKind.DEMOTE, promotion.original, promotion.destination.parent, promotion.destination))
         ensureWorker()
     }
+    fun requestRestoreBackup(promotion: Promotion) = action {
+        if (promotion.canRestoreBackup) edit { it.copy(backupRestoration = promotion) }
+    }
+    fun cancelRestoreBackup() = action { edit { it.copy(backupRestoration = null) } }
+    fun confirmRestoreBackup() = action {
+        val promotion = state.value.backupRestoration ?: return@action
+        edit { it.copy(backupRestoration = null) }
+        enqueue(TransferRequest(TransferKind.RESTORE_BACKUP, promotion.original, promotion.destination.parent, promotion.destination, promotion.backup))
+        ensureWorker()
+    }
     fun refresh() = action { retrySettingsReads(); requestRefresh() }
     fun acknowledge(id: Long) = action {
         edit { it.copy(activity = it.activity.map { item -> if (item.id == id) item.copy(acknowledged = true) else item }) }
@@ -360,7 +370,8 @@ class AppController internal constructor(
 
     private fun enqueue(request: TransferRequest) {
         if (indexedConflict(request)) return
-        if (reservations().any { existing ->
+        val existingRequests = if (request.kind == TransferKind.RESTORE_BACKUP) reserved().map { it.request } else reservations()
+        if (existingRequests.any { existing ->
                 pathsOverlap(existing.original, existing.destination, request.original, request.destination)
             }) return
         edit { it.copy(activity = it.activity + ActivityItem(nextId++, request, ActivityStatus.QUEUED), activityExpanded = true) }
@@ -412,8 +423,11 @@ class AppController internal constructor(
             when (request.kind) {
                 TransferKind.PROMOTE -> operations.promote(request.original, request.directory, progress::report)
                 TransferKind.DEMOTE -> operations.demote(request.directory, request.destination.fileName.toString(), progress::report)
+                TransferKind.RESTORE_BACKUP -> operations.restoreBackup(request.original, progress::report)
             }
-            unrefreshedTransfers = unrefreshedTransfers + request
+            unrefreshedTransfers = if (request.kind == TransferKind.RESTORE_BACKUP) unrefreshedTransfers.filterNot {
+                pathsOverlap(it.original, it.destination, request.original, request.destination)
+            } else unrefreshedTransfers + request
             val finalProgress = progress.close()
             updateActivity(item.id) { it.copy(status = ActivityStatus.SUCCEEDED, progress = finalProgress) }
         } catch (error: Exception) {
@@ -438,7 +452,7 @@ class AppController internal constructor(
             "Cannot inspect destination: ${error.message ?: error.javaClass.simpleName}"
         } ?: return
         val affected = withContext(io) {
-            reserved().filter { sameDirectory(directory, it.request.directory) }.map { it.id }.toSet()
+            reserved().filter { it.request.kind != TransferKind.RESTORE_BACKUP && sameDirectory(directory, it.request.directory) }.map { it.id }.toSet()
         }
         edit { current -> current.copy(activity = current.activity.map {
             if (it.id in affected) it.copy(status = ActivityStatus.STOPPED,
@@ -479,9 +493,9 @@ class AppController internal constructor(
     private fun indexedConflict(request: TransferRequest): Boolean =
         (request.kind == TransferKind.PROMOTE && state.value.promotions.any {
             pathsOverlap(it.original, it.destination, request.original, request.destination)
-        }) || unrefreshedTransfers.any {
+        }) || (request.kind != TransferKind.RESTORE_BACKUP && unrefreshedTransfers.any {
             pathsOverlap(it.original, it.destination, request.original, request.destination)
-        }
+        })
 
     private fun action(block: suspend () -> Unit) {
         scope.launch {

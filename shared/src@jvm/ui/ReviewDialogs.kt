@@ -41,6 +41,8 @@ internal fun ReviewDialog(state: AppState, controller: AppController, onChooseDi
         }
     }) {
         Text("Move these items to your promotion folder. A link keeps each original location working.", style = MaterialTheme.typography.bodyMedium)
+        Text("A backup stays on the original drive, using the same space as before promotion. It captures the files as they are now; later changes stay in the promoted files.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val multipleDirectories = review?.items?.mapNotNull { it.destination?.parent }?.distinct()?.let { it.size > 1 } == true
         Text(if (multipleDirectories) "Promotion folders" else "Promotion folder", style = MaterialTheme.typography.titleSmall)
         val directory = if (review != null) review.directory else state.defaultDirectory
@@ -113,12 +115,33 @@ internal fun DemoteDialog(promotion: Promotion, onCancel: () -> Unit, onConfirm:
         CancelButton(onCancel)
         Button(onClick = onConfirm) { Text("Demote") }
     }) {
-        Text("Move the data back to its original location and replace the link with the file or folder.")
+        Text("Return the latest promoted files to their original location and replace the link with the file or folder.")
         Text("From", style = MaterialTheme.typography.labelMedium)
         PathText(promotion.destination)
         Text("Move back to", style = MaterialTheme.typography.labelMedium)
         PathText(promotion.original)
+        if (promotion.backup != null) {
+            Text("The original drive needs temporary free space for the returning files. The source backup stays safe until the return succeeds, then GameTier removes it and the promoted copy.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Text("The item leaves your promotions list when the move finishes. Its result stays in session Activity.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+internal fun RestoreBackupDialog(promotion: Promotion, onCancel: () -> Unit, onConfirm: () -> Unit) {
+    WorkflowDialog("Restore backup of ${promotion.original.fileName}?", onCancel, actions = {
+        CancelButton(onCancel)
+        Button(onClick = onConfirm) { Text("Restore backup") }
+    }) {
+        Text("The promoted files are unavailable. Return the promotion-time snapshot to the original location.")
+        Text("Changes made after promotion will be missing from this backup.")
+        Text("Source backup", style = MaterialTheme.typography.labelMedium)
+        promotion.backup?.let { PathText(it) }
+        Text("Restore to", style = MaterialTheme.typography.labelMedium)
+        PathText(promotion.original)
+        Text("Restoring consumes the backup. GameTier checks the locations again before restoring.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

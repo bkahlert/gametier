@@ -22,6 +22,37 @@ import kotlin.test.Test
 
 class FileMoverIntegrationTest {
     @Test
+    fun `on copying across the filesystem matrix source data attributes and streams remain`() {
+        withTestVolumePairs { sourceRoot, destinationRoot ->
+            val source = createTestTree(sourceRoot.resolve("game"))
+            val file = source.resolve("game.dat")
+            val timestamp = FileTime.fromMillis(1_600_000_000_000)
+            Files.setLastModifiedTime(file, timestamp)
+            File("$file:metadata").writeText("stream data")
+            Files.getFileAttributeView(file, DosFileAttributeView::class.java).apply {
+                setHidden(true)
+                setReadOnly(true)
+            }
+            val destination = destinationRoot.resolve("game")
+
+            val result = FileMover.copy(source, destination)
+
+            assertSoftly {
+                result shouldBe Unit
+                assertTestTree(source)
+                assertTestTree(destination)
+                Files.getLastModifiedTime(destination.resolve("game.dat")) shouldBe timestamp
+                Files.readAttributes(destination.resolve("game.dat"), java.nio.file.attribute.DosFileAttributes::class.java).apply {
+                    isHidden shouldBe true
+                    isReadOnly shouldBe true
+                }
+                File("${destination.resolve("game.dat")}:metadata").readText() shouldBe "stream data"
+                File("$file:metadata").readText() shouldBe "stream data"
+            }
+        }
+    }
+
+    @Test
     fun `on all filesystem pairings byte totals include alternate streams and advance within files`() {
         withTestVolumePairs { sourceRoot, destinationRoot ->
             val source = Files.createDirectory(sourceRoot.resolve("game"))

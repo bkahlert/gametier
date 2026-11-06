@@ -15,6 +15,71 @@ import org.junit.jupiter.api.Nested
 
 class UiPresentationTest {
     @Nested
+    inner class SourceBackups {
+        @Test
+        fun `on missing target eligible backup offers recovery without normal demotion`() {
+            val result = promotionPresentation(recoverable, emptyList())
+            val details = promotionDetails(recoverable)
+
+            assertSoftly {
+                result.status shouldBe "Recoverable"
+                result.canRestoreBackup shouldBe true
+                result.canDemote shouldBe false
+                details shouldContain recoverable.backup.toString()
+                details shouldContain "promotion-time snapshot"
+            }
+        }
+
+        @Test
+        fun `on unprotected legacy promotion demotion remains available`() {
+            val legacy = recoverable.copy(condition = PromotionCondition.PROMOTED, backup = null, canRestoreBackup = false)
+
+            val result = promotionPresentation(legacy, emptyList())
+            val details = promotionDetails(legacy)
+
+            assertSoftly {
+                result.status shouldBe "Unprotected"
+                result.canDemote shouldBe true
+                result.canRestoreBackup shouldBe false
+                details shouldContain "No source backup"
+            }
+        }
+
+        @Test
+        fun `on healthy protected promotion only normal demotion is available`() {
+            val protected = recoverable.copy(condition = PromotionCondition.PROMOTED, canRestoreBackup = false)
+
+            val result = promotionPresentation(protected, emptyList())
+
+            assertSoftly {
+                result.status shouldBe "Promoted"
+                result.canDemote shouldBe true
+                result.canRestoreBackup shouldBe false
+            }
+        }
+
+        @Test
+        fun `on queued or running restoration recovery actions are disabled and operation is named`() {
+            val request = TransferRequest(TransferKind.RESTORE_BACKUP, recoverable.original, recoverable.destination.parent, recoverable.destination, recoverable.backup)
+            val running = ActivityItem(1, request, ActivityStatus.RUNNING)
+
+            val queuedResult = promotionPresentation(recoverable, listOf(running.copy(status = ActivityStatus.QUEUED)))
+            val runningResult = promotionPresentation(recoverable, listOf(running))
+            val details = activityDetails(running)
+
+            assertSoftly {
+                queuedResult.canRestoreBackup shouldBe false
+                runningResult.status shouldBe "Restoring backup"
+                runningResult.canRestoreBackup shouldBe false
+                runningResult.canDemote shouldBe false
+                runningResult.busy shouldBe true
+                details shouldContain "Restore backup"
+                details shouldContain recoverable.backup.toString()
+            }
+        }
+    }
+
+    @Nested
     inner class PromotionRows {
         @Test
         fun `on inconsistent promotion details replace demotion`() {
@@ -215,5 +280,11 @@ class UiPresentationTest {
 private val directory = Path.of("C:/FastGames")
 private val original = Path.of("C:/Games/Hades")
 private val destination = directory.resolve("Hades")
-private val promotion = Promotion(original, destination, TransferState.PROMOTED, PromotionCondition.PROMOTED)
+private val promotion = Promotion(original, destination, TransferState.PROMOTED, PromotionCondition.PROMOTED,
+    backup = Path.of("C:/backups/Hades/data"))
 private val activity = ActivityItem(1, TransferRequest(TransferKind.DEMOTE, original, directory, destination), ActivityStatus.FAILED)
+
+private val recoverable = Promotion(
+    appPath("library/game"), appPath("destination/game"), TransferState.PROMOTED, PromotionCondition.NEEDS_ATTENTION,
+    backup = appPath("backups/game/data"), canRestoreBackup = true,
+)
