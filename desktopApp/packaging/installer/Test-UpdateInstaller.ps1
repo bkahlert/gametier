@@ -254,7 +254,7 @@ public static class PackageIdentity {
 "@
     $packageName = [PackageIdentity]::Current()
     if ($Initialize) {
-        New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($Settings)) | Out-Null
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Settings)) | Out-Null
         [IO.File]::WriteAllBytes($Settings, [IO.File]::ReadAllBytes($SettingsFixture))
         $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\GameTier')
         try { $key.SetValue('ExplorerIntegrationEnabled', 0, [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $key.Dispose() }
@@ -276,7 +276,7 @@ public static class PackageIdentity {
     $ready.Set() | Out-Null
     if (-not $release.WaitOne([TimeSpan]::FromMinutes(5))) { throw 'Parent did not release the packaged fixture within five minutes.' }
 } catch {
-    @{ Passed = $false; Error = $_.Exception.ToString() } | ConvertTo-Json | Set-Content -LiteralPath $Result
+    @{ Passed = $false; Error = ($_.Exception.ToString() + "`n" + $_.ScriptStackTrace) } | ConvertTo-Json | Set-Content -LiteralPath $Result
     $ready.Set() | Out-Null
     exit 1
 } finally {
