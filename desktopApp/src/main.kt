@@ -17,6 +17,8 @@ import com.bkahlert.gametier.resources.gametier
 import com.bkahlert.gametier.settings.getAppSettings
 import com.bkahlert.gametier.ui.App
 import com.bkahlert.gametier.ui.AppController
+import com.bkahlert.gametier.ui.AdministratorRestart
+import com.bkahlert.gametier.ui.RestartSelection
 import com.bkahlert.gametier.ui.DesktopSelection
 import com.bkahlert.gametier.ui.FileSelectionPreparer
 import com.bkahlert.gametier.ui.ManagerPromotionOperations
@@ -27,13 +29,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 
-fun main() {
+fun main(args: Array<String>) {
+    val restartSelection = RestartSelection.parse(args)
+    restartSelection?.localAppData?.let { System.setProperty("gametier.localAppData", it) }
+    restartSelection?.classPath?.let { System.setProperty("gametier.classPath", it) }
     UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = getAppSettings()
-    val controller = AppController(scope, settings, ManagerPromotionOperations(settings), FileSelectionPreparer())
+    val restart = if (System.getProperty("os.name").startsWith("Windows")) AdministratorRestart() else null
+    val controller = AppController(scope, settings, ManagerPromotionOperations(settings), FileSelectionPreparer(),
+        restartAsAdministrator = restart?.let { { request -> it.restart(request) } })
+    restartSelection?.request?.let {
+        controller.select(listOf(it.original))
+        controller.setReviewDirectory(it.directory)
+    }
     try {
         application {
             val state by controller.state.collectAsState()
@@ -42,10 +54,17 @@ fun main() {
             }
             Window(
                 onCloseRequest = controller::requestClose,
-                title = "GameTier",
+                title = if (restartSelection != null) "GameTier · Administrator" else "GameTier",
                 icon = painterResource(Res.drawable.gametier),
                 state = rememberWindowState(width = 1100.dp, height = 760.dp),
             ) {
+                LaunchedEffect(Unit) {
+                    if (restartSelection != null) try {
+                        withContext(Dispatchers.IO) { restartSelection.acknowledge() }
+                    } catch (_: Exception) {
+                        exitApplication()
+                    }
+                }
                 DisposableEffect(window) {
                     window.minimumSize = Dimension(760, 560)
                     onDispose { }
@@ -64,7 +83,7 @@ fun main() {
                     isDragging = dragging,
                     modifier = Modifier.desktopFileDrop(
                         enabled = !state.closeWhenFinished && !state.exitRequested &&
-                            state.pendingSelection.isEmpty() && state.demotion == null && !state.closePrompt,
+                            state.pendingSelection.isEmpty() && state.demotion == null && !state.closePrompt && state.linkPermission == null,
                         onDragging = { dragging = it },
                         onSelection = controller::select,
                         onError = controller::reportError,

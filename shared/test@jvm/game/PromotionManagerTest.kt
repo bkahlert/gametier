@@ -8,6 +8,7 @@ import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import java.io.IOException
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
@@ -213,16 +214,73 @@ class PromotionManagerTest {
                 val original = Files.writeString(root.resolve("game.rom"), "data")
                 val settings = DataStoreAppSettings(MemoryPreferencesStore())
                 PromotionManager(settings).registerDirectory(folder)
-                val manager = PromotionManager(settings, GameFileOperations(), PromotionIndex { _, _ -> throw IOException("disk full") })
+                var writes = 0
+                val manager = PromotionManager(settings, GameFileOperations(
+                    createLink = { link, _ -> Files.writeString(link, "probe") },
+                ), PromotionIndex { _, _ -> writes++; throw IOException("disk full") })
 
                 val error = shouldThrow<IOException> { manager.promote(original, folder) }
                 val result = manager.inventory()
 
                 assertSoftly {
                     error.message.isNullOrBlank() shouldBe false
+                    writes shouldBe 1
                     Files.readString(original) shouldBe "data"
                     Files.exists(folder.resolve("game.rom")) shouldBe false
                     result.single().promotions shouldBe emptyList()
+                }
+            }
+        }
+
+        @Test
+        fun `on link preflight failure no promotion is indexed and another attempt remains possible`() = withTestDirectory { root ->
+            runBlocking {
+                val folder = Files.createDirectory(root.resolve("games"))
+                val original = Files.writeString(root.resolve("game.rom"), "data")
+                val settings = DataStoreAppSettings(MemoryPreferencesStore())
+                var attempts = 0
+                val manager = PromotionManager(settings, GameFileOperations(createLink = { _, _ ->
+                    attempts++
+                    throw IOException("required privilege is not held")
+                }), PromotionIndex())
+
+                val first = shouldThrow<IOException> { manager.promote(original, folder) }
+                val second = shouldThrow<IOException> { manager.promote(original, folder) }
+                val result = manager.inventory()
+
+                assertSoftly {
+                    first.message.orEmpty() shouldContain "preflight"
+                    second.message.orEmpty() shouldContain "preflight"
+                    attempts shouldBe 2
+                    result.single().promotions shouldBe emptyList()
+                    Files.readString(original) shouldBe "data"
+                    Files.exists(folder.resolve("game.rom")) shouldBe false
+                }
+            }
+        }
+
+        @Test
+        fun `on preflight cleanup failure the probe is reported without indexing a transfer`() = withTestDirectory { root ->
+            runBlocking {
+                val folder = Files.createDirectory(root.resolve("games"))
+                val original = Files.writeString(root.resolve("game.rom"), "data")
+                val settings = DataStoreAppSettings(MemoryPreferencesStore())
+                var probe: java.nio.file.Path? = null
+                val manager = PromotionManager(settings, GameFileOperations(
+                    createLink = { link, _ -> probe = Files.writeString(link, "probe") },
+                    delete = { throw IOException("probe is locked") },
+                ), PromotionIndex())
+
+                val error = shouldThrow<IOException> { manager.promote(original, folder) }
+                val result = manager.inventory()
+
+                assertSoftly {
+                    error.message.orEmpty() shouldContain "preflight cleanup"
+                    error.message.orEmpty() shouldContain probe.toString()
+                    result.single().promotions shouldBe emptyList()
+                    Files.readString(probe!!) shouldBe "probe"
+                    Files.readString(original) shouldBe "data"
+                    Files.exists(folder.resolve("game.rom")) shouldBe false
                 }
             }
         }
@@ -234,10 +292,14 @@ class PromotionManagerTest {
                 val original = Files.writeString(root.resolve("game.rom"), "data")
                 val settings = DataStoreAppSettings(MemoryPreferencesStore())
                 var intentAtFailure: List<IndexedPromotion>? = null
-                val manager = PromotionManager(settings, GameFileOperations(createLink = { _, _ ->
-                    intentAtFailure = PromotionIndex().read(folder)
-                    throw IOException("link unavailable")
-                }), PromotionIndex())
+                val manager = PromotionManager(settings, GameFileOperations(
+                    createLink = { link, _ -> Files.writeString(link, "probe") },
+                    move = { _, destination ->
+                        intentAtFailure = PromotionIndex().read(folder)
+                        Files.writeString(destination, "partial")
+                        throw IOException("move failed")
+                    },
+                ), PromotionIndex())
 
                 val error = shouldThrow<IOException> { manager.promote(original, folder) }
                 val result = PromotionManager(settings).inventory().single().promotions.single()
@@ -248,6 +310,7 @@ class PromotionManagerTest {
                     result.state shouldBe TransferState.PROMOTING
                     result.condition shouldBe PromotionCondition.NEEDS_ATTENTION
                     Files.readString(original) shouldBe "data"
+                    Files.readString(folder.resolve("game.rom")) shouldBe "partial"
                 }
             }
         }

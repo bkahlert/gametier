@@ -161,7 +161,12 @@ planning integration. They remain authoritative for the existing services.
 - Settings accept native absolute paths even when a drive is unavailable.
   Actual promotion requires an existing destination directory. Reuse the
   settings validator rather than the mockup's illustrative JavaScript
-  path check. Surface permission failures without automatic elevation.
+  path check. Surface permission failures without automatic elevation. For a
+  failed link preflight before data moves, offer an explicit **Allow symbolic
+  links…** action. **Restart as administrator** requests Windows UAC consent,
+  retains the original user's settings, and reopens that selection for review.
+  Cancellation leaves the current window open. This is not a general retry for
+  transfers that may already have moved data.
 - Real selection handling must account for Windows path identity and
   aliases without following a selected promotion's link into its data.
   Existing transfer validation remains authoritative for unsupported

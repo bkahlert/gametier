@@ -34,10 +34,12 @@ internal fun transferFailure(
     target: Path?,
     phase: String,
     error: Exception,
+    dataMayHaveMoved: Boolean = true,
 ): IOException = IOException(
     "$phase failed during $operation of '$original'" +
         (target?.let { " with '$it'" } ?: "") +
-        ". Inspect these locations before retrying; recovery may be incomplete. ${error.message.orEmpty()}",
+        (if (dataMayHaveMoved) ". Inspect these locations before retrying; recovery may be incomplete. " else ". No game data was moved. ") +
+        error.message.orEmpty(),
     error,
 )
 

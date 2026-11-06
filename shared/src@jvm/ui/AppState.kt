@@ -49,8 +49,11 @@ data class AppState(
     val savingSettings: Boolean = false,
     val inputError: Throwable? = null,
     val settingsLoading: Boolean = false,
+    val linkPermission: TransferRequest? = null,
+    val requestingPermission: Boolean = false,
+    val permissionError: Throwable? = null,
 ) {
-    val busy: Boolean get() = settingsLoading || preparing || savingSettings || refreshing ||
+    val busy: Boolean get() = requestingPermission || settingsLoading || preparing || savingSettings || refreshing ||
         activity.any { it.status == ActivityStatus.QUEUED || it.status == ActivityStatus.RUNNING }
     val promotions: List<Promotion> get() = inventory.flatMap { it.promotions }
     val filteredPromotions: List<Promotion> get() {
