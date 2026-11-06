@@ -52,6 +52,12 @@ Closing during work offers Keep open or Close when finished. Settings changes
 apply to future additions; existing promotions and confirmed work retain their
 destinations. Missing storage and inconsistent promotions remain visible.
 
+If Windows blocks link creation before a promotion starts, Activity offers
+**Allow symbolic links… → Restart as administrator**. Windows requests UAC
+consent, and the selected game and destination reopen for review. Cancelling
+keeps the existing window open. The elevated session retains the original user's
+settings; game data only moves after confirmation in the new window.
+
 The approved [interface specification](./docs/superpowers/specs/2026-11-06-app-interface-design.md)
 and [screen study](./docs/designs/app-interface/index.html) record the product
 design. The study uses illustrative data; the Compose application uses the real
@@ -90,7 +96,8 @@ explicitly. Existing promotions made without the manager are reported as
 unrecognized; there is no automatic adoption, cleanup, or repair.
 
 The manager performs blocking work on the I/O dispatcher and serializes its
-operations across instances in this process. It persists intent before moving
+operations across instances in this process. It checks link creation before
+recording a promotion, persists intent before moving
 game data and commits completion afterward. Failed/interrupted transfers retain
 their intent for inspection, including when the transfer succeeded but its final
 index update failed. Lost indexes on remembered destinations are never reset

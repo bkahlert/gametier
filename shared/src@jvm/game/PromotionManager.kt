@@ -41,8 +41,9 @@ class PromotionManager internal constructor(
         if (gameEntryExists(target)) throw IOException("Destination already exists: $target")
         FileMover.validateSource(origin)
         if (target.startsWith(origin.toRealPath())) throw IOException("Destination must not be inside the original game")
-        index.write(root, records + pending)
-        Promoter.promote(origin, target, operations)
+        Promoter.promote(origin, target, operations) {
+            index.write(root, records + pending)
+        }
         index.write(root, records + pending.copy(state = TransferState.PROMOTED))
     }
 

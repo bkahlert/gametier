@@ -3,6 +3,7 @@ package com.bkahlert.gametier.ui
 import com.bkahlert.gametier.game.Promotion
 import com.bkahlert.gametier.game.PromotionCondition
 import com.bkahlert.gametier.game.DestinationStatus
+import com.bkahlert.gametier.game.SymlinkPreflightException
 import com.bkahlert.gametier.settings.AppSettings
 import com.bkahlert.gametier.settings.validatePromotionFolder
 import java.io.IOException
@@ -27,9 +28,11 @@ class AppController internal constructor(
     private val operations: PromotionOperations,
     private val preparer: SelectionPreparer,
     private val io: CoroutineDispatcher,
+    private val restartAsAdministrator: (suspend (TransferRequest) -> Unit)? = null,
 ) {
-    constructor(scope: CoroutineScope, settings: AppSettings, operations: PromotionOperations, preparer: SelectionPreparer) :
-        this(scope, settings, operations, preparer, Dispatchers.IO)
+    constructor(scope: CoroutineScope, settings: AppSettings, operations: PromotionOperations, preparer: SelectionPreparer,
+        restartAsAdministrator: (suspend (TransferRequest) -> Unit)? = null) :
+        this(scope, settings, operations, preparer, Dispatchers.IO, restartAsAdministrator)
 
     private val mutableState = MutableStateFlow(AppState(settingsLoading = true))
     val state: StateFlow<AppState> = mutableState.asStateFlow()
@@ -213,6 +216,33 @@ class AppController internal constructor(
     fun reportError(error: Throwable) = action { edit { it.copy(inputError = error, closeWhenFinished = false) } }
     fun clearError() = action { edit { it.copy(inputError = null) } }
 
+    fun canRequestLinkPermission(item: ActivityItem): Boolean = restartAsAdministrator != null &&
+        item.status == ActivityStatus.FAILED && item.request.kind == TransferKind.PROMOTE && item.error is SymlinkPreflightException
+
+    fun requestLinkPermission(id: Long) = action {
+        if (hasWork() || state.value.pendingSelection.isNotEmpty()) return@action
+        val item = state.value.activity.singleOrNull { it.id == id && canRequestLinkPermission(it) } ?: return@action
+        edit { it.copy(linkPermission = item.request, permissionError = null, closeWhenFinished = false) }
+    }
+
+    fun cancelLinkPermission() = action { edit { it.copy(linkPermission = null, permissionError = null) } }
+
+    fun confirmLinkPermission() = action {
+        val request = state.value.linkPermission ?: return@action
+        val restart = restartAsAdministrator ?: return@action
+        if (hasWork()) return@action
+        edit { it.copy(requestingPermission = true, permissionError = null) }
+        try {
+            onIo { restart(request) }
+            edit { it.copy(exitRequested = true) }
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            edit { it.copy(permissionError = error) }
+        } finally {
+            edit { it.copy(requestingPermission = false) }
+        }
+    }
+
     private fun changeInput(value: String) {
         inputRevision++
         inputDirty = true
@@ -308,7 +338,7 @@ class AppController internal constructor(
     }
 
     private fun ensureWorker() {
-        if (worker != null) return
+        if (worker != null || state.value.requestingPermission) return
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 while (true) {
@@ -414,6 +444,7 @@ class AppController internal constructor(
 
     private fun action(block: suspend () -> Unit) {
         scope.launch {
+            if (state.value.requestingPermission || state.value.exitRequested) return@launch
             block()
             maybeExit()
         }

@@ -122,6 +122,24 @@ internal fun DemoteDialog(promotion: Promotion, onCancel: () -> Unit, onConfirm:
 }
 
 @Composable
+internal fun LinkPermissionDialog(state: AppState, controller: AppController) {
+    WorkflowDialog("Allow symbolic links", controller::cancelLinkPermission, actions = {
+        OutlinedButton(onClick = controller::cancelLinkPermission, enabled = !state.requestingPermission) { Text("Cancel") }
+        Button(onClick = controller::confirmLinkPermission, enabled = !state.busy) { Text("Restart as administrator") }
+    }) {
+        Text("Windows may require administrator permission to create the link that keeps your game's original location working.")
+        Text("Restart GameTier with administrator access for this session. Windows will ask you to approve. Your selected game and destination will reopen for review before anything moves.")
+        state.linkPermission?.let { PathText(it.original); Text("Move to", style = MaterialTheme.typography.labelSmall); PathText(it.destination) }
+        Text("No game data was moved. If you cancel the Windows prompt, GameTier stays open.", style = MaterialTheme.typography.bodySmall)
+        if (state.requestingPermission) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text("Waiting for Windows permission and the new GameTier window…")
+        }
+        state.permissionError?.let { Notice("GameTier could not restart", it.message ?: "Permission was not granted. You can try again.") }
+    }
+}
+
+@Composable
 internal fun CloseDialog(state: AppState, onKeepOpen: () -> Unit, onCloseWhenFinished: () -> Unit) {
     WorkflowDialog("GameTier is still working", onKeepOpen, actions = {
         CancelButton(onKeepOpen, "Keep open")

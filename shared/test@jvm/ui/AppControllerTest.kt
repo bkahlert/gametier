@@ -26,6 +26,137 @@ import org.junit.jupiter.api.Nested
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppControllerTest {
     @Nested
+    inner class LinkPermission {
+        @Test
+        fun `on granting permission only an acknowledged restart closes the app`() = runTest {
+            val operations = AppTestOperations().apply { transfer = { throw permissionFailure() } }
+            val gate = CompletableDeferred<Unit>()
+            val restarted = mutableListOf<TransferRequest>()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                StandardTestDispatcher(testScheduler), restartAsAdministrator = { restarted += it; gate.await() })
+            runCurrent()
+            app.select(listOf(appPath("one")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val failed = app.state.value.activity.single()
+            app.requestLinkPermission(failed.id)
+            runCurrent()
+            val prompt = app.state.value
+            app.confirmLinkPermission()
+            app.confirmLinkPermission()
+            runCurrent()
+            app.cancelLinkPermission()
+            app.select(listOf(appPath("two")))
+            app.requestClose()
+            runCurrent()
+            val waiting = app.state.value
+            gate.complete(Unit)
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                prompt.linkPermission shouldBe failed.request
+                waiting.requestingPermission shouldBe true
+                waiting.busy shouldBe true
+                waiting.exitRequested shouldBe false
+                waiting.pendingSelection shouldBe emptyList()
+                restarted shouldBe listOf(failed.request)
+                result.exitRequested shouldBe true
+                operations.started.size shouldBe 1
+            }
+        }
+
+        @Test
+        fun `on declined or failed elevation the selection and failure stay available`() = runTest {
+            val failure = IOException("Permission was not granted")
+            val operations = AppTestOperations().apply { transfer = { throw permissionFailure() } }
+            var attempts = 0
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                StandardTestDispatcher(testScheduler), restartAsAdministrator = { attempts++; throw failure })
+            runCurrent()
+            app.select(listOf(appPath("one")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val item = app.state.value.activity.single()
+            app.requestLinkPermission(item.id)
+            runCurrent()
+            app.confirmLinkPermission()
+            runCurrent()
+            val declined = app.state.value
+            app.confirmLinkPermission()
+            runCurrent()
+            app.cancelLinkPermission()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                declined.exitRequested shouldBe false
+                declined.requestingPermission shouldBe false
+                declined.permissionError shouldBeSameInstanceAs failure
+                declined.linkPermission shouldBe item.request
+                attempts shouldBe 2
+                result.linkPermission shouldBe null
+                result.activity.single() shouldBe item
+            }
+        }
+
+        @Test
+        fun `on other failures or unsupported systems elevation is unavailable`() = runTest {
+            for (restartAvailable in listOf(false, true)) {
+                val operations = AppTestOperations().apply { transfer = { throw IOException("move failed") } }
+                var restarts = 0
+                val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                    StandardTestDispatcher(testScheduler), restartAsAdministrator = if (restartAvailable) ({ restarts++ }) else null)
+                runCurrent()
+                app.select(listOf(appPath("one")))
+                runCurrent()
+                app.confirmReview()
+                runCurrent()
+                app.requestLinkPermission(app.state.value.activity.single().id)
+                app.confirmLinkPermission()
+                runCurrent()
+                val result = app.state.value
+
+                assertSoftly {
+                    result.linkPermission shouldBe null
+                    result.exitRequested shouldBe false
+                    restarts shouldBe 0
+                }
+            }
+        }
+
+        @Test
+        fun `on work in progress elevation waits until transfers finish`() = runTest {
+            val gate = CompletableDeferred<Unit>()
+            val operations = AppTestOperations().apply { transfer = {
+                if (it.original == appPath("one")) throw permissionFailure() else gate.await()
+            } }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                StandardTestDispatcher(testScheduler), restartAsAdministrator = { error("Must not restart") })
+            runCurrent()
+            app.select(listOf(appPath("one"), appPath("two")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.requestLinkPermission(app.state.value.activity.first().id)
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                result.linkPermission shouldBe null
+                result.activity.last().status shouldBe ActivityStatus.RUNNING
+            }
+            gate.complete(Unit)
+            runCurrent()
+        }
+
+        private fun permissionFailure() = com.bkahlert.gametier.game.SymlinkPreflightException(
+            appPath("one"), appPath("destination/one"), "preflight", IOException("required privilege"))
+    }
+
+    @Nested
     inner class Queue {
         @Test
         fun `on confirming additions while busy work runs once in order with captured folders`() = runTest {

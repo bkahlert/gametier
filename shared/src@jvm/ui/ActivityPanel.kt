@@ -51,7 +51,9 @@ internal fun ActivityPanel(state: AppState, controller: AppController, onDetails
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(state.activity, key = { it.id }) { item ->
-                    ActivityRow(item, { onDetails("${item.request.original.fileName} · operation details", activityDetails(item)) }, { controller.acknowledge(item.id) })
+                    ActivityRow(item, { onDetails("${item.request.original.fileName} · operation details", activityDetails(item)) },
+                        { controller.acknowledge(item.id) }, if (controller.canRequestLinkPermission(item)) ({ controller.requestLinkPermission(item.id) }) else null,
+                        permissionEnabled = !state.busy && state.pendingSelection.isEmpty())
                 }
             }
         }
@@ -59,7 +61,8 @@ internal fun ActivityPanel(state: AppState, controller: AppController, onDetails
 }
 
 @Composable
-private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge: () -> Unit) {
+private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge: () -> Unit,
+    onPermission: (() -> Unit)?, permissionEnabled: Boolean) {
     val failed = item.status == ActivityStatus.FAILED || item.status == ActivityStatus.STOPPED
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         HorizontalDivider()
@@ -84,6 +87,7 @@ private fun ActivityRow(item: ActivityItem, onDetails: () -> Unit, onAcknowledge
                     maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             Column(horizontalAlignment = Alignment.End) {
+                if (onPermission != null) TextButton(onClick = onPermission, enabled = permissionEnabled) { Text("Allow symbolic links…") }
                 TextButton(onClick = onDetails) { Text("Details") }
                 if (failed) {
                     if (item.acknowledged) Text("Acknowledged", style = MaterialTheme.typography.labelSmall,

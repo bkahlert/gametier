@@ -197,6 +197,11 @@ class PromoterTest {
 
             assertSoftly {
                 assertTransferFailure(result, original, destination, "preflight")
+                result.message.orEmpty() shouldContain "No game data was moved"
+                if (System.getProperty("os.name").startsWith("Windows")) {
+                    result.message.orEmpty() shouldContain "Symbolic-link"
+                    result.message.orEmpty() shouldContain "administrator"
+                }
                 result.cause shouldBe failure
                 Files.readString(original) shouldBe "game data"
                 Files.exists(destination) shouldBe false
