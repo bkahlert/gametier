@@ -1,0 +1,22 @@
+product:
+  type: kmp/lib
+  platforms: [ jvm ]
+
+dependencies:
+  - $compose.runtime
+  - $compose.foundation
+  - $compose.material3
+  - $compose.ui
+  - $compose.components.resources
+  - $compose.preview
+  - $compose.hotReload.runtimeApi
+  - $libs.androidx.lifecycle.viewmodel.compose
+  - $libs.androidx.lifecycle.runtime.compose
+
+settings:
+  compose:
+    enabled: true
+    resources:
+      packageName: com.bkahlert.gametier.resources
+      # Generate public accessors so other modules (and previews) can use Res.*
+      exposedAccessors: true
