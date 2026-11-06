@@ -102,14 +102,14 @@ function Assert-Installed($ExpectedIdentity) {
     $ns.AddNamespace('d5', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10/5')
     $classes = @($installedManifest.SelectNodes('//com:Class', $ns) | Where-Object { $_.GetAttribute('Id').Trim('{}') -ieq $classId.Trim('{}') })
     Assert-Equal $classes.Count 1 'Registered packaged COM class count'
-    Assert-Equal $classes[0].GetAttribute('Path') 'GameTierExplorer.dll' 'Registered COM DLL'
+    Assert-Equal $classes[0].GetAttribute('Path') 'bin/GameTierExplorer.dll' 'Registered COM DLL'
     foreach ($kind in @('*', 'Directory')) {
         $verbs = @($installedManifest.SelectNodes('//d4:FileExplorerContextMenus/d5:ItemType', $ns) |
             Where-Object { $_.GetAttribute('Type') -ceq $kind } | ForEach-Object { $_.SelectNodes('d5:Verb', $ns) } |
             Where-Object { $_.GetAttribute('Clsid').Trim('{}') -ieq $classId.Trim('{}') })
         Assert-Equal $verbs.Count 1 "Registered Explorer $kind verb count"
     }
-    foreach ($name in @('GameTier.exe', 'GameTierExplorer.dll', 'GameTierExplorer.LICENSE.txt')) {
+    foreach ($name in @('bin/GameTier.exe', 'bin/GameTierExplorer.dll', 'GameTierExplorer.LICENSE.txt')) {
         $file = Join-Path $installed.InstallLocation $name
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Installed asset is missing: $file" }
     }
@@ -168,7 +168,7 @@ function Stop-PackageFixture($Running) {
 }
 
 function Start-InstalledApplication($Registration, [string] $Phase) {
-    $launcher = Join-Path $Registration.Package.InstallLocation 'GameTier.exe'
+    $launcher = Join-Path $Registration.Package.InstallLocation 'bin/GameTier.exe'
     $process = Start-Process -FilePath $launcher -WorkingDirectory $fixture -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $fixture "$Phase-launcher.stdout.log") `
         -RedirectStandardError (Join-Path $fixture "$Phase-launcher.stderr.log")

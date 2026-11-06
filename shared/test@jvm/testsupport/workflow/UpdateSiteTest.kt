@@ -79,7 +79,8 @@ class UpdateSiteTest {
         @Test
         fun `on missing download artifacts verification names the missing output`() = withTestDirectory { root ->
             assumeWindows()
-            listOf("download.html" to "Download page expected one item, got 0", "metadata.properties" to "update-site metadata is missing")
+            listOf("download.html" to "Download page expected one item, got 0", "metadata.properties" to "update-site metadata is missing",
+                "updatecheck.exe" to "Windows update helper expected one item, got 0")
                 .forEachIndexed { index, (name, error) ->
                     val fixture = UpdateSiteFixture(Files.createDirectory(root.resolve("missing-$index")))
                     Files.delete(fixture.site.resolve(name))
@@ -119,14 +120,14 @@ class UpdateSiteTest {
                 ManifestMutation("version", "Version=\"1.2.3.0\"", "Version=\"1.2.4.0\"", "Package version expected"),
                 ManifestMutation("architecture", "ProcessorArchitecture=\"x64\"", "ProcessorArchitecture=\"arm64\"", "Package architecture expected"),
                 ManifestMutation("namespace", "manifest/com/windows10", "manifest/com/invalid", "Packaged Explorer COM class expected"),
-                ManifestMutation("com-path", "Path=\"GameTierExplorer.dll\"", "Path=\"app/GameTierExplorer.dll\"", "Explorer COM path expected"),
+                ManifestMutation("com-path", "Path=\"bin/GameTierExplorer.dll\"", "Path=\"app/GameTierExplorer.dll\"", "Explorer COM path expected"),
                 ManifestMutation("com-threading", "ThreadingModel=\"STA\"", "ThreadingModel=\"MTA\"", "Explorer COM threading model expected"),
                 ManifestMutation("file-verb", "Type=\"*\"", "Type=\".txt\"", "Explorer item type * expected"),
                 ManifestMutation("directory-verb", "Type=\"Directory\"", "Type=\"Folder\"", "Explorer item type Directory expected"),
                 ManifestMutation("elevation", "Name=\"allowElevation\"", "Name=\"unused\"", "Restricted capability allowElevation expected"),
                 ManifestMutation("settings", "LocalAppData)\\GameTierData", "LocalAppData)\\OtherData", "GameTierData must be excluded"),
                 ManifestMutation("registry", "<d6:RegistryWriteVirtualization>disabled", "<d6:RegistryWriteVirtualization>enabled", "Registry virtualization policy expected"),
-                ManifestMutation("launcher", "Executable=\"GameTier.exe\"", "Executable=\"app/GameTier.exe\"", "Launcher path expected"),
+                ManifestMutation("launcher", "Executable=\"updatecheck.exe\"", "Executable=\"bin/GameTier.exe\"", "Launcher path expected"),
             )
             mutations.forEach { mutation ->
                 val fixture = UpdateSiteFixture(Files.createDirectory(root.resolve(mutation.name)))
@@ -146,8 +147,9 @@ class UpdateSiteTest {
         fun `on absent payloads verification reports each missing asset`() = withTestDirectory { root ->
             assumeWindows()
             val entries = mapOf(
-                "GameTier.exe" to "MSIX entry GameTier.exe expected",
-                "GameTierExplorer.dll" to "MSIX entry GameTierExplorer.dll expected",
+                "bin/GameTier.exe" to "MSIX entry bin/GameTier.exe expected",
+                "bin/GameTierExplorer.dll" to "MSIX entry bin/GameTierExplorer.dll expected",
+                "updatecheck.exe" to "MSIX entry updatecheck.exe expected",
                 "GameTierExplorer.LICENSE.txt" to "MSIX entry GameTierExplorer.LICENSE.txt expected",
                 "LICENSE" to "MSIX entry LICENSE expected",
                 "Assets/logo.png" to "Referenced package logo is missing",
@@ -173,7 +175,7 @@ class UpdateSiteTest {
         fun `on a stale burned in launcher path verification rejects the launcher`() = withTestDirectory { root ->
             assumeWindows()
             val fixture = UpdateSiteFixture(root)
-            fixture.entries["GameTier.exe"] = "MZ\u0000-Dgametier.appPath=GameTier.exe\u0000".toByteArray()
+            fixture.entries["bin/GameTier.exe"] = "MZ\u0000-Dgametier.appPath=GameTier.exe\u0000".toByteArray()
             fixture.writePackage()
 
             val result = verify(fixture.site, fixture.library)
@@ -256,9 +258,9 @@ private class UpdateSiteFixture(root: Path) {
               <v:ExcludedDirectory>${'$'}(KnownFolder:LocalAppData)\GameTierData</v:ExcludedDirectory>
             </v:ExcludedDirectories></v:FileSystemWriteVirtualization>
           </Properties>
-          <Applications><Application Id="GameTier" Executable="GameTier.exe"><Extensions>
+          <Applications><Application Id="GameTier" Executable="updatecheck.exe"><Extensions>
             <com:Extension Category="windows.comServer"><com:ComServer><com:SurrogateServer>
-              <com:Class Id="$fixtureClassId" Path="GameTierExplorer.dll" ThreadingModel="STA" />
+              <com:Class Id="$fixtureClassId" Path="bin/GameTierExplorer.dll" ThreadingModel="STA" />
             </com:SurrogateServer></com:ComServer></com:Extension>
             <d4:Extension Category="windows.fileExplorerContextMenus"><d4:FileExplorerContextMenus>
               <d5:ItemType Type="*"><d5:Verb Id="Promote" Clsid="$fixtureClassId" /></d5:ItemType>
@@ -269,8 +271,9 @@ private class UpdateSiteFixture(root: Path) {
         </Package>
     """.trimIndent()
     val entries = linkedMapOf(
-        "GameTier.exe" to "MZ\u0000-Dgametier.appPath=&&/../GameTier.exe\u0000".toByteArray(),
-        "GameTierExplorer.dll" to explorerBytes,
+        "bin/GameTier.exe" to "MZ\u0000-Dgametier.appPath=&&/../bin/GameTier.exe\u0000".toByteArray(),
+        "bin/GameTierExplorer.dll" to explorerBytes,
+        "updatecheck.exe" to byteArrayOf(1),
         "GameTierExplorer.LICENSE.txt" to Files.readAllBytes(projectRoot().resolve("desktopApp/packaging/explorer/third_party/nlohmann/LICENSE.MIT")),
         "LICENSE" to Files.readAllBytes(projectRoot().resolve("LICENSE")),
         "Assets/logo.png" to byteArrayOf(1),
@@ -282,6 +285,7 @@ private class UpdateSiteFixture(root: Path) {
     init {
         Files.write(site.resolve("gametier.cer"), Base64.getDecoder().decode(fixtureCertificate))
         Files.write(site.resolve("install.exe"), byteArrayOf(1))
+        Files.write(site.resolve("updatecheck.exe"), byteArrayOf(1))
         Files.writeString(site.resolve("download.html"), "<a href=\"install.exe\">Download</a>")
         Files.writeString(site.resolve("metadata.properties"), "version=1.2.3")
         Files.writeString(site.resolve("gametier.appinstaller"), """

@@ -39,7 +39,7 @@ $configuration = [ordered]@{
         'consistency-checks' = $(if ($TestPackage) { 'warn' } else { 'error' })
     }
     windows = @{ amd64 = @{ 'package-extras' = @(
-        $ExplorerLibrary.Replace('\', '/'),
+        @{ from = $ExplorerLibrary.Replace('\', '/'); to = 'bin/GameTierExplorer.dll' },
         (Join-Path $projectDirectory 'LICENSE').Replace('\', '/'),
         @{ from = (Join-Path $projectDirectory 'desktopApp/packaging/explorer/third_party/nlohmann/LICENSE.MIT').Replace('\', '/'); to = 'GameTierExplorer.LICENSE.txt' }
     ) } }

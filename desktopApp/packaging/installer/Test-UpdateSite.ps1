@@ -28,14 +28,6 @@ function Get-Entry([string] $Name) {
     return Get-Single @($archive.Entries | Where-Object { $_.FullName.Replace('\', '/') -ieq $Name }) "MSIX entry $Name"
 }
 
-function Assert-Signed([string] $Path, [string] $Thumbprint) {
-    $signature = Get-AuthenticodeSignature -LiteralPath $Path
-    if ($signature.Status -notin @('Valid', 'NotTrusted') -or $null -eq $signature.SignerCertificate) {
-        throw "Invalid Authenticode signature on '$Path': $($signature.Status) / $($signature.StatusMessage)"
-    }
-    Assert-Equal $signature.SignerCertificate.Thumbprint $Thumbprint "Signing certificate for $([IO.Path]::GetFileName($Path))"
-}
-
 function Assert-StableUri([string] $Value, [string] $Description) {
     $uri = $null
     if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or
@@ -52,7 +44,8 @@ if (-not (Test-Path -LiteralPath $ExplorerLibrary -PathType Leaf)) { throw "Expl
 $sitePath = (Resolve-Path -LiteralPath $Site).Path
 $files = @(Get-ChildItem -LiteralPath $sitePath -File)
 $package = Get-Single @($files | Where-Object Extension -eq '.msix') 'Windows MSIX package'
-$installer = Get-Single @($files | Where-Object Extension -eq '.exe') 'Windows EXE installer'
+$installer = Get-Single @($files | Where-Object { $_.Extension -eq '.exe' -and $_.Name -cne 'updatecheck.exe' }) 'Windows EXE installer'
+$updateHelper = Get-Single @($files | Where-Object Name -ceq 'updatecheck.exe') 'Windows update helper'
 $appInstaller = Get-Single @($files | Where-Object Extension -eq '.appinstaller') 'App Installer update metadata'
 $certificateFile = Get-Single @($files | Where-Object Extension -in @('.cer', '.crt')) 'Windows signing certificate'
 $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificateFile.FullName)
@@ -86,7 +79,7 @@ try {
     Assert-Equal $identity.GetAttribute('Publisher') $certificate.Subject 'Package publisher'
     $application = Get-Single @($manifest.SelectNodes('/f:Package/f:Applications/f:Application', $ns)) 'Application'
     Assert-Equal $application.GetAttribute('Id') 'GameTier' 'Application identity'
-    Assert-Equal $application.GetAttribute('Executable') 'GameTier.exe' 'Launcher path'
+    Assert-Equal $application.GetAttribute('Executable') 'updatecheck.exe' 'Launcher path'
     $packageLogo = Get-Single @($manifest.SelectNodes('/f:Package/f:Properties/f:Logo', $ns)) 'Package logo'
     $logoPaths = @($packageLogo.InnerText.Trim()) + @($manifest.SelectNodes('//@*') |
         Where-Object { $_.LocalName -like '*Logo' } | ForEach-Object Value)
@@ -103,7 +96,7 @@ try {
     $classId = '9B6ED281-384A-4DBF-98C0-D26B6D41B352'
     $class = Get-Single @($manifest.SelectNodes('//com:Extension[@Category="windows.comServer"]/com:ComServer/com:SurrogateServer/com:Class', $ns) |
         Where-Object { $_.GetAttribute('Id').Trim('{}') -ieq $classId }) 'Packaged Explorer COM class'
-    Assert-Equal $class.GetAttribute('Path') 'GameTierExplorer.dll' 'Explorer COM path'
+    Assert-Equal $class.GetAttribute('Path') 'bin/GameTierExplorer.dll' 'Explorer COM path'
     Assert-Equal $class.GetAttribute('ThreadingModel') 'STA' 'Explorer COM threading model'
     foreach ($kind in @('*', 'Directory')) {
         $item = Get-Single @($manifest.SelectNodes('//d4:Extension[@Category="windows.fileExplorerContextMenus"]/d4:FileExplorerContextMenus/d5:ItemType', $ns) |
@@ -123,13 +116,14 @@ try {
     $registryPolicy = Get-Single @($manifest.SelectNodes('/f:Package/f:Properties/d6:RegistryWriteVirtualization', $ns)) 'Registry virtualization policy'
     Assert-Equal $registryPolicy.InnerText.Trim() 'disabled' 'Registry virtualization policy'
 
-    foreach ($name in @('GameTier.exe', 'GameTierExplorer.dll')) {
+    foreach ($name in @('bin/GameTier.exe', 'bin/GameTierExplorer.dll', 'updatecheck.exe')) {
         $entry = Get-Entry $name
         if ($entry.Length -eq 0) { throw "Empty packaged binary: $name" }
         $extracted = Join-Path $fixture $name
+        New-Item -ItemType Directory -Path (Split-Path $extracted -Parent) -Force | Out-Null
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $extracted)
     }
-    $packagedLibrary = [IO.File]::ReadAllBytes((Join-Path $fixture 'GameTierExplorer.dll'))
+    $packagedLibrary = [IO.File]::ReadAllBytes((Join-Path $fixture 'bin/GameTierExplorer.dll'))
     $builtLibrary = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $ExplorerLibrary).Path)
     foreach ($bytes in @($packagedLibrary, $builtLibrary)) {
         if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a -or
@@ -146,11 +140,11 @@ try {
     Get-Entry 'AppxSignature.p7x' | Out-Null
     Get-Entry 'AppxBlockMap.xml' | Out-Null
 
-    $launcherBytes = [IO.File]::ReadAllBytes((Join-Path $fixture 'GameTier.exe'))
+    $launcherBytes = [IO.File]::ReadAllBytes((Join-Path $fixture 'bin/GameTier.exe'))
     $launcherText = [Text.Encoding]::UTF8.GetString($launcherBytes)
     $appPathOptions = @([regex]::Matches($launcherText, '-Dgametier[.]appPath=([^\x00\r\n]+)') | ForEach-Object { $_.Groups[1].Value })
     $appPathOption = Get-Single $appPathOptions 'Generated launcher gametier.appPath option'
-    Assert-Equal $appPathOption '&&/../GameTier.exe' 'Launcher path relative to app/ runtime directory'
+    Assert-Equal $appPathOption '&&/../bin/GameTier.exe' 'Launcher path relative to app/ runtime directory'
     if ($launcherText -match '-Djpackage\.app-path=') { throw 'Generated launcher configuration retains a stale jpackage path.' }
     $jars = @($archive.Entries | Where-Object { $_.FullName -match '^app/[^/]+\.jar$' })
     if ($jars.Count -eq 0) { throw 'Application runtime JARs are missing from app/.' }
@@ -179,9 +173,13 @@ try {
     }
     $downloadHtml = Get-Content -Raw -Encoding UTF8 -LiteralPath $download.FullName
     if ($downloadHtml -notmatch [regex]::Escape($installer.Name)) { throw 'Download page does not reference the generated Windows EXE installer.' }
-    foreach ($name in @('GameTier.exe', 'GameTierExplorer.dll')) {
-        Assert-Signed (Join-Path $fixture $name) $certificate.Thumbprint
+    Import-Module (Join-Path $PSScriptRoot 'Authenticode.psm1') -Force -DisableNameChecking
+    foreach ($name in @('bin/GameTier.exe', 'bin/GameTierExplorer.dll', 'updatecheck.exe')) {
+        Assert-AuthenticodeSignature -Path (Join-Path $fixture $name) -Thumbprint $certificate.Thumbprint
     }
+    Assert-AuthenticodeSignature -Path $package.FullName -Thumbprint $certificate.Thumbprint
+    Assert-AuthenticodeSignature -Path $installer.FullName -Thumbprint $certificate.Thumbprint
+    Assert-AuthenticodeSignature -Path $updateHelper.FullName -Thumbprint $certificate.Thumbprint
     Write-Output "Conveyor update site passed: $($package.Name), signed payload, Explorer registration, persistent settings, stable background updates."
 } finally {
     $archive.Dispose()

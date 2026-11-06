@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -28,6 +29,8 @@ class BuildUpdateSiteTest {
             config.getValue("site").jsonObject.getValue("base-url").jsonPrimitive.content shouldBe
                 "https://github.com/bkahlert/gametier/releases/latest/download"
             config.getValue("site").jsonObject.getValue("consistency-checks").jsonPrimitive.content shouldBe "error"
+            config.getValue("windows").jsonObject.getValue("amd64").jsonObject.getValue("package-extras")
+                .jsonArray.first().jsonObject.getValue("to").jsonPrimitive.content shouldBe "bin/GameTierExplorer.dll"
             Files.exists(destination.resolve("site")) shouldBe false
         }
     }
