@@ -14,9 +14,7 @@ there. The promoted files receive subsequent changes; the snapshot stays as it
 was at promotion. Snapshots live in
 `<source-drive>:\.gametier\backups\<original-name>`.
 
-![GameTier listing Clockwork Vale, a folder-based game, and Starfall Circuit, a ROM](docs/screenshots/promotions.png)
-
-*Fictional demo games: Clockwork Vale (folder) and Starfall Circuit (ROM), moving from E: to C:.*
+![GameTier listing two folder-based games and a ROM-based game](docs/screenshots/promotions.png)
 
 ## Install
 
@@ -35,7 +33,7 @@ Current releases are unsigned, so Windows may show a publisher warning.
 You can also right-click one file or folder and choose **Promote with GameTier**
 (Windows 11: **Show more options**). Turn this option off in **Settings**.
 
-![Reviewing Starfall Circuit.rom on E: before moving it to C:](docs/screenshots/review.png)
+![Reviewing promotion of a game to an SSD drive](docs/screenshots/review.png)
 
 Use **Demote** to return the latest game files to their original location. With a
 source backup, the original drive needs temporary space for the returning files;
