@@ -14,19 +14,31 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.bkahlert.gametier.settings.ExplorerIntegration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse: () -> Unit,
-    onDetails: (String, String) -> Unit, modifier: Modifier = Modifier) {
+    onDetails: (String, String) -> Unit, modifier: Modifier = Modifier, explorerIntegration: ExplorerIntegration? = null) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(26.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TextButton(onClick = controller::showPromotions) { Text("← Promotions") }
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        explorerIntegration?.let { ExplorerIntegrationSetting(it) }
         Text("Choose where new promotions go.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Storage", style = MaterialTheme.typography.titleMedium)
         Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
@@ -72,6 +84,41 @@ internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse
                     } else StatusLabel("Available", StatusTone.SUCCESS)
                 } else Text("Not inspected yet", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+@Composable
+private fun ExplorerIntegrationSetting(integration: ExplorerIntegration) {
+    var enabled by remember(integration) { mutableStateOf(false) }
+    var busy by remember(integration) { mutableStateOf(true) }
+    var error by remember(integration) { mutableStateOf<Exception?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(integration) {
+        try { enabled = withContext(Dispatchers.IO) { integration.isEnabled() } }
+        catch (failure: Exception) { error = failure }
+        finally { busy = false }
+    }
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Promote from File Explorer", style = MaterialTheme.typography.titleSmall)
+                Switch(checked = enabled, enabled = !busy, onCheckedChange = { value ->
+                    busy = true
+                    error = null
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { integration.setEnabled(value) }
+                            enabled = value
+                        } catch (failure: Exception) { error = failure }
+                        finally { busy = false }
+                    }
+                })
+            }
+            Text("Show “Promote with GameTier” for eligible files and folders.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            error?.let { Text(it.message ?: "Explorer integration could not be changed.", color = MaterialTheme.colorScheme.error) }
         }
     }
 }

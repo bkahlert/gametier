@@ -15,10 +15,12 @@ import androidx.compose.ui.window.rememberWindowState
 import com.bkahlert.gametier.resources.Res
 import com.bkahlert.gametier.resources.gametier
 import com.bkahlert.gametier.settings.getAppSettings
+import com.bkahlert.gametier.settings.WindowsExplorerIntegration
 import com.bkahlert.gametier.ui.App
 import com.bkahlert.gametier.ui.AppController
 import com.bkahlert.gametier.ui.AdministratorRestart
 import com.bkahlert.gametier.ui.RestartSelection
+import com.bkahlert.gametier.ui.PromotionLaunch
 import com.bkahlert.gametier.ui.DesktopSelection
 import com.bkahlert.gametier.ui.FileSelectionPreparer
 import com.bkahlert.gametier.ui.ManagerPromotionOperations
@@ -33,7 +35,8 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 
 fun main(args: Array<String>) {
-    val restartSelection = RestartSelection.parse(args)
+    val promotionLaunch = PromotionLaunch.parse(args)
+    val restartSelection = if (promotionLaunch == null) RestartSelection.parse(args) else null
     restartSelection?.localAppData?.let { System.setProperty("gametier.localAppData", it) }
     restartSelection?.classPath?.let { System.setProperty("gametier.classPath", it) }
     UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
@@ -43,6 +46,8 @@ fun main(args: Array<String>) {
     val controller = AppController(scope, settings, ManagerPromotionOperations(settings), FileSelectionPreparer(),
         restartAsAdministrator = restart?.let { { request -> it.restart(request) } })
     restartSelection?.requests?.let(controller::restorePromotions)
+    promotionLaunch?.open(controller)
+    val explorerIntegration = WindowsExplorerIntegration.installed()
     try {
         application {
             val state by controller.state.collectAsState()
@@ -73,6 +78,7 @@ fun main(args: Array<String>) {
                 }
                 App(
                     controller = controller,
+                    explorerIntegration = explorerIntegration,
                     onChooseFiles = { pick { picker.files().takeIf { it.isNotEmpty() }?.let(controller::select) } },
                     onChooseFolders = { pick { picker.folders().takeIf { it.isNotEmpty() }?.let(controller::select) } },
                     onChooseReviewDirectory = { pick { picker.destination()?.let(controller::setReviewDirectory) } },

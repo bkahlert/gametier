@@ -36,9 +36,24 @@ Push a `vMAJOR.MINOR.PATCH` tag, such as `v0.1.1`, to trigger the
 [release workflow](../.github/workflows/release.yml). It runs tests, stages the
 application JARs, and packages a Windows x64 MSI with a bundled Java runtime.
 Current installers are unsigned.
+The Explorer action appears in the classic context menu (Windows 11: **Show more
+options**). Windows 11's primary menu requires a signed package identity; see
+[Explorer packaging](packaging/explorer/README.md).
 
 To stage the same JARs locally:
 
 ```powershell
 .\kotlin.bat do stageInstaller -m desktopApp
 ```
+
+Build the [native Explorer command](packaging/explorer/README.md), then package
+with JDK 25 and WiX available on `PATH`:
+
+```powershell
+.\desktopApp\packaging\installer\Build-Installer.ps1 -AppVersion 0.1.1
+```
+
+CI installs two test versions on its clean runner, checks registration and a
+disabled preference through upgrade, then uninstalls. See
+[installer scripts](packaging/installer/README.md) for packaging checks and the
+separate signed identity preparation path.

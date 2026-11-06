@@ -23,7 +23,7 @@ internal fun appSettingsStorage(file: Path): Storage<Preferences> = object : Sto
             override val defaultValue: Preferences
                 get() = missingSettings(canonicalFile.toPath())
         }
-        val connection = FileStorage(serializer) { canonicalFile }.createConnection()
+        val connection = FileStorage(serializer, { SettingsCoordinator(it.toPath()) }) { canonicalFile }.createConnection()
         return object : StorageConnection<Preferences> by connection {
             private val writeMutex = Mutex()
 

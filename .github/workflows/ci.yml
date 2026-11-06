@@ -15,9 +15,44 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          architecture: x64
+      - name: Build Explorer command
+        shell: pwsh
+        run: |
+          cmake -S desktopApp/packaging/explorer -B build/explorer -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/explorer --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/explorer -C Release --output-on-failure
       - name: Build
         shell: cmd
         run: kotlin.bat build
       - name: Test
         shell: cmd
         run: kotlin.bat test
+      - name: Stage application JARs
+        shell: cmd
+        run: kotlin.bat do stageInstaller -m desktopApp
+      - name: Build installer lifecycle fixtures
+        shell: pwsh
+        run: |
+          ./desktopApp/packaging/installer/Build-Installer.ps1 -AppVersion 0.0.1
+          ./desktopApp/packaging/installer/Build-Installer.ps1 -AppVersion 0.0.2
+      - name: Test Explorer installer lifecycle
+        shell: pwsh
+        run: |
+          ./desktopApp/packaging/installer/Test-ExplorerInstaller.ps1 `
+            -Installer build/release/GameTier-0.0.1.msi `
+            -UpgradeInstaller build/release/GameTier-0.0.2.msi `
+            -ExplorerLibrary build/explorer/Release/GameTierExplorer.dll
+      - name: Preserve installer failure logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: installer-logs
+          path: ${{ runner.temp }}/gametier-installer-*/*.log
+          if-no-files-found: ignore

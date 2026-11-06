@@ -32,6 +32,9 @@ Current releases are unsigned, so Windows may show a publisher warning.
 3. Choose a folder on your faster drive, review the selection, and click **Promote**.
    Your first destination becomes the default for future additions.
 
+You can also right-click one file or folder and choose **Promote with GameTier**
+(Windows 11: **Show more options**). Turn this option off in **Settings**.
+
 ![Reviewing Starfall Circuit.rom on E: before moving it to C:](docs/screenshots/review.png)
 
 Use **Demote** to return the latest game files to their original location. With a
@@ -44,7 +47,7 @@ ordinary files and restore instructions also allow manual recovery without GameT
 Older promotions without snapshots are marked **Unprotected** and can still be demoted.
 
 Search finds promotions by name or path; **Activity** shows queued work and results.
-Keep GameTier open until transfers finish, and use one running instance at a time.
+Keep GameTier open until transfers finish.
 
 If Windows blocks symbolic links, open **Activity → Allow symbolic links… →
 Restart as administrator**. Approve the Windows prompt, then review and confirm

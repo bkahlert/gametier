@@ -1,12 +1,18 @@
 package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.game.isolatedPromotionManager
+import com.bkahlert.gametier.game.GameFileOperations
+import com.bkahlert.gametier.game.SymlinkPreflightException
 import com.bkahlert.gametier.game.sourceBackupFixture
+import com.bkahlert.gametier.testsupport.filesystem.createTestJunction
 import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
 import io.kotest.assertions.assertSoftly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -15,9 +21,139 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppControllerIntegrationTest {
+    @Nested
+    inner class ManagedSources {
+        @Test
+        fun `on changing destination and refreshing a duplicate managed alias remains blocked`() = withTestDirectory { root ->
+            val fixture = managedAliasFixture(root)
+            val marker = Files.writeString(fixture.marker, "malformed")
+            val other = Files.createDirectory(root.resolve("other-destination"))
+            runTest {
+                val app = AppController(backgroundScope, AppTestSettings(fixture.directory), AppTestOperations(),
+                    FileSelectionPreparer(), StandardTestDispatcher(testScheduler))
+                app.select(listOf(fixture.original, fixture.selection))
+                val initial = app.state.first { it.review != null && !it.preparing }
+
+                app.setReviewDirectory(other)
+                runCurrent()
+                val changed = app.state.first { it.review?.directory == other && !it.preparing }
+                app.refresh()
+                runCurrent()
+                val refreshed = app.state.first { it.review != null && !it.preparing && !it.refreshing }
+
+                assertSoftly {
+                    listOf(initial, changed, refreshed).forEach { result ->
+                        result.review?.items?.single()?.original shouldBe fixture.original
+                        result.review?.items?.single()?.status shouldBe ReviewStatus.BLOCKED
+                        result.review?.items?.single()?.message.orEmpty() shouldContain marker.toString()
+                    }
+                    Files.readString(fixture.original) shouldBe "retained"
+                    Files.list(other).use { it.count() } shouldBe 0L
+                }
+            }
+        }
+
+        @Test
+        fun `on removing an alias by its displayed original it stays removed during refresh`() = withTestDirectory { root ->
+            val fixture = managedAliasFixture(root)
+            Files.writeString(fixture.marker, "malformed")
+            val remaining = Files.writeString(root.resolve("remaining"), "remaining")
+            runTest {
+                val app = AppController(backgroundScope, AppTestSettings(fixture.directory), AppTestOperations(),
+                    FileSelectionPreparer(), StandardTestDispatcher(testScheduler))
+                app.select(listOf(fixture.selection, remaining))
+                app.state.first { it.review?.items?.size == 2 && !it.preparing }
+
+                app.removeReviewItem(fixture.original)
+                runCurrent()
+                val removed = app.state.first { it.review != null && !it.preparing }
+                app.refresh()
+                runCurrent()
+                val refreshed = app.state.first { it.review != null && !it.preparing && !it.refreshing }
+
+                assertSoftly {
+                    removed.review?.items?.map { it.original } shouldBe listOf(remaining)
+                    refreshed.review?.items?.map { it.original } shouldBe listOf(remaining)
+                    refreshed.pendingSelection shouldBe listOf(remaining)
+                }
+            }
+        }
+
+        @Test
+        fun `on a lexical ancestor marker appearing after review execution refuses before registration`() = withTestDirectory { root ->
+            val fixture = managedAliasFixture(root)
+            runTest {
+                val settings = AppTestSettings(fixture.directory)
+                val operations = ManagerPromotionOperations(settings, isolatedPromotionManager(root, settings,
+                    GameFileOperations(createLink = { _, _ -> throw IOException("required privilege is not held") })))
+                val app = AppController(backgroundScope, settings, operations, FileSelectionPreparer(), StandardTestDispatcher(testScheduler))
+                app.select(listOf(fixture.selection))
+                val reviewed = app.state.first { it.review != null && !it.preparing }
+                val marker = Files.writeString(fixture.marker, "malformed")
+
+                app.confirmReview()
+                val result = app.state.first { it.activity.singleOrNull()?.status == ActivityStatus.FAILED && !it.refreshing }
+
+                assertSoftly {
+                    reviewed.review?.items?.single()?.status shouldBe ReviewStatus.READY
+                    reviewed.review?.items?.single()?.original shouldBe fixture.original
+                    result.activity.single().error?.message.orEmpty() shouldContain marker.toString()
+                    Files.list(fixture.directory).use { it.count() } shouldBe 0L
+                    Files.readString(fixture.original) shouldBe "retained"
+                }
+            }
+        }
+
+        @Test
+        fun `on administrator restart the lexical source is rechecked and retained across refresh`() = withTestDirectory { root ->
+            val fixture = managedAliasFixture(root)
+            runTest {
+                val settings = AppTestSettings(fixture.directory)
+                val operations = AppTestOperations().apply { transfer = {
+                    throw SymlinkPreflightException(fixture.selection, fixture.directory.resolve("game"), "preflight",
+                        IOException("required privilege is not held"))
+                } }
+                val restarted = mutableListOf<TransferRequest>()
+                val app = AppController(backgroundScope, settings, operations, FileSelectionPreparer(), StandardTestDispatcher(testScheduler),
+                    restartAsAdministrator = { restarted += it })
+                app.state.first { it.inventoryLoaded && !it.settingsLoading && !it.refreshing }
+                app.select(listOf(fixture.selection))
+                app.state.first { it.review != null && !it.preparing }
+                app.confirmReview()
+                val failed = app.state.first { it.activity.singleOrNull()?.status == ActivityStatus.FAILED && !it.refreshing }
+                runCurrent()
+
+                app.requestLinkPermission(failed.activity.single().id)
+                runCurrent()
+                app.state.value.linkPermission?.size shouldBe 1
+                app.confirmLinkPermission()
+                runCurrent()
+                val requests = RestartSelection.parse(RestartSelection(restarted, 1234, "token").arguments())!!.requests
+                Files.writeString(fixture.marker, "malformed")
+                val restored = AppController(backgroundScope, settings, operations, FileSelectionPreparer(), StandardTestDispatcher(testScheduler))
+                restored.restorePromotions(requests)
+                val initial = restored.state.first { it.review != null && !it.preparing }
+                restored.refresh()
+                runCurrent()
+                val refreshed = restored.state.first { it.review != null && !it.preparing && !it.refreshing }
+
+                assertSoftly {
+                    restarted.single().original shouldBe fixture.selection
+                    initial.review?.items?.single()?.original shouldBe fixture.original
+                    initial.review?.items?.single()?.status shouldBe ReviewStatus.BLOCKED
+                    refreshed.reviewError shouldBe null
+                    refreshed.review?.items?.single()?.status shouldBe ReviewStatus.BLOCKED
+                    refreshed.review?.items?.single()?.destination shouldBe fixture.directory.resolve("game")
+                    Files.readString(fixture.original) shouldBe "retained"
+                }
+            }
+        }
+    }
+
     @Nested
     inner class SourceBackupRecovery {
         @Test
@@ -206,4 +342,17 @@ class AppControllerIntegrationTest {
             }
         }
     }
+}
+
+private data class ManagedAliasFixture(val original: Path, val selection: Path, val directory: Path, val marker: Path)
+
+private fun managedAliasFixture(root: Path): ManagedAliasFixture {
+    assumeTrue(System.getProperty("os.name").startsWith("Windows"))
+    val managed = Files.createDirectory(root.resolve("managed"))
+    val ordinary = Files.createDirectory(root.resolve("ordinary"))
+    val original = Files.writeString(ordinary.resolve("game"), "retained")
+    val alias = managed.resolve("alias")
+    createTestJunction(alias, ordinary)
+    return ManagedAliasFixture(original, alias.resolve("game"), Files.createDirectory(root.resolve("destination")),
+        managed.resolve(".gametier.json"))
 }
