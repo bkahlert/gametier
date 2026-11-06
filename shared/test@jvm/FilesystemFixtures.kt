@@ -12,7 +12,7 @@ internal fun withTestDirectory(parent: Path? = null, action: (Path) -> Unit) {
     val root = if (parent == null) Files.createTempDirectory("gametier-test-")
         else Files.createTempDirectory(parent.toAbsolutePath(), "gametier-test-")
     try {
-        action(root)
+        action(root.toRealPath())
     } finally {
         deleteTestFixture(root)
     }
