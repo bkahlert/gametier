@@ -2,12 +2,13 @@
 
 - Evolve this file automatically when durable project guidance changes; keep it concise and remove stale or redundant instructions.
 - Express invariants and feature behavior as runnable tests rather than documentation. Document only core features.
+- Organize sources by responsibility (`game`, `files`, `settings`, `ui`) beneath the existing source roots; mirror packages in tests. Keep feature fixtures with their tests and reusable support in `testsupport.filesystem` or `testsupport.workflow`.
 
 ## Testing
 
 - Cover every observable behavior and error path in the same change; only explicitly requested drafts or prototypes are exempt. If testing is impractical, report why and the manual check performed.
 - Test at the lowest effective level with minimal fixtures; use integration tests for integration behavior. Avoid sleeps, polling and incidental I/O; never sacrifice coverage or mock the subject. Reuse the existing test stack.
-- Reuse `scripts/TestVolumes.psm1` and `shared/test@jvm/TestVolumes.kt` for NTFS/ReFS integration fixtures and their filesystem matrix.
+- Reuse `scripts/TestVolumes.psm1` and `shared/test@jvm/testsupport/filesystem/TestVolumes.kt` for NTFS/ReFS integration fixtures and their filesystem matrix.
 - Name test classes after their subject (`FooTest` or `FooIntegrationTest`); organize aspects and states as nested contexts using the test framework's idioms, with concise, nonredundant names and outcome-focused claims. Prefer `on` for triggers.
 - Capture the action's immediate result before asserting; use expressive Kotest matchers and group multiple assertions on the result. Keep transformations in the assertion phase.
 - Put tests before helpers; extract bulky fixtures. Avoid comments and KDoc unless they explain exceptional, otherwise inexpressible knowledge.
