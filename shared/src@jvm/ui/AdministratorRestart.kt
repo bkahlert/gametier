@@ -26,11 +26,15 @@ class AdministratorRestart internal constructor(
     private val startupTimeoutMillis: Int = 60_000,
     private val launch: (Path, Path, Path, RestartSelection) -> Unit,
 ) {
-    constructor() : this(
-        Path.of(System.getProperty("java.home"), "bin", "javaw.exe"),
+    constructor() : this(defaultAdministratorLaunch())
+
+    private constructor(administratorLaunch: AdministratorLaunch) : this(
+        administratorLaunch.executable,
         System.getProperty("gametier.classPath") ?: System.getProperty("java.class.path"),
         Path.of("").toAbsolutePath(),
-        launch = { executable, arguments, directory, _ -> WindowsElevation().launch(executable, arguments, directory) },
+        launch = { executable, arguments, directory, _ ->
+            WindowsElevation().launch(executable, administratorLaunch.arguments(arguments), directory)
+        },
     )
 
     fun restart(requests: List<TransferRequest>) {
@@ -96,6 +100,7 @@ data class RestartSelection(val requests: List<TransferRequest>, val port: Int, 
         fun parse(arguments: Array<String>): RestartSelection? {
             if (arguments.isEmpty()) return null
             if (arguments.contentEquals(arrayOf("--restart"))) return readRestartJar(Path.of(System.getProperty("java.class.path")))
+            if (arguments.size == 2 && arguments[0] == "--restart") return readRestartJar(Path.of(arguments[1]))
             require(arguments.size >= 6 && arguments.size % 3 == 0 && arguments[arguments.size - 3] == "--ready") { "Invalid restart arguments" }
             val port = arguments[arguments.size - 2].toIntOrNull()
             val token = arguments.last()
@@ -118,10 +123,10 @@ internal class WindowsElevation(
         ProcessBuilder(command).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor()
     },
 ) {
-    fun launch(executable: Path, arguments: Path, directory: Path) {
+    fun launch(executable: Path, arguments: String, directory: Path) {
         val script = """
             try {
-                Start-Process -FilePath ${literal(executable.toString())} -ArgumentList ${literal("-jar \"${arguments.fileName}\" --restart")} -WorkingDirectory ${literal(directory.toString())} -Verb RunAs -WindowStyle Hidden -PassThru -ErrorAction Stop | Out-Null
+                Start-Process -FilePath ${literal(executable.toString())} -ArgumentList ${literal(arguments)} -WorkingDirectory ${literal(directory.toString())} -Verb RunAs -WindowStyle Hidden -PassThru -ErrorAction Stop | Out-Null
                 exit 0
             } catch {
                 ${'$'}failure = ${'$'}_.Exception
@@ -143,6 +148,17 @@ internal class WindowsElevation(
 
     private fun literal(value: String): String = "'${value.replace("'", "''")}'"
 }
+
+internal data class AdministratorLaunch(val executable: Path, val packaged: Boolean) {
+    fun arguments(file: Path): String = if (packaged) "--restart \"${file.toAbsolutePath()}\"" else "-jar \"${file.fileName}\" --restart"
+}
+
+internal fun defaultAdministratorLaunch(
+    appPath: String? = System.getProperty("jpackage.app-path"),
+    javaHome: String = System.getProperty("java.home"),
+): AdministratorLaunch = appPath?.let {
+    AdministratorLaunch(Path.of(it), true)
+} ?: AdministratorLaunch(Path.of(javaHome, "bin", "javaw.exe"), false)
 
 private val loopback: InetAddress = InetAddress.getByName("127.0.0.1")
 

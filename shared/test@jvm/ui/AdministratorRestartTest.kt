@@ -16,6 +16,31 @@ class AdministratorRestartTest {
     @Nested
     inner class Handoff {
         @Test
+        fun `on packaged startup the application launcher replaces absent bundled java`() {
+            val launcher = appPath("GameTier.exe")
+            val payload = appPath("temp/restart payload.jar")
+
+            val result = defaultAdministratorLaunch(launcher.toString(), appPath("runtime").toString())
+
+            assertSoftly {
+                result.executable shouldBe launcher
+                result.arguments(payload) shouldBe "--restart \"${payload.toAbsolutePath()}\""
+            }
+        }
+
+        @Test
+        fun `on packaged restart the explicit payload file restores the selection`() = withTestDirectory { root ->
+            val request = request(root)
+            val selection = RestartSelection(listOf(request), 1234, "token", root.toString(), "classes")
+            val file = root.resolve("restart payload.jar")
+            writeRestartJar(file, selection, root)
+
+            val result = RestartSelection.parse(arrayOf("--restart", file.toString()))
+
+            result shouldBe selection
+        }
+
+        @Test
         fun `on restart the exact selection is restored and temporary arguments are removed`() = withTestDirectory { root ->
             val requests = listOf(request(root), request(root.resolve("second")))
             var argumentFile: Path? = null
@@ -144,7 +169,7 @@ class AdministratorRestartTest {
         fun `on UAC cancellation the error explains that the app stays open`() {
             val launcher = WindowsElevation(Path.of("powershell.exe")) { 1223 }
 
-            val result = shouldThrow<IOException> { launcher.launch(Path.of("javaw.exe"), Path.of("arguments"), Path.of("work")) }
+            val result = shouldThrow<IOException> { launcher.launch(Path.of("javaw.exe"), "-jar arguments --restart", Path.of("work")) }
 
             result.message.orEmpty() shouldContain "Permission was not granted"
         }
@@ -153,7 +178,7 @@ class AdministratorRestartTest {
         fun `on failed launch the native error code is retained`() {
             val launcher = WindowsElevation(Path.of("powershell.exe")) { 5 }
 
-            val result = shouldThrow<IOException> { launcher.launch(Path.of("javaw.exe"), Path.of("arguments"), Path.of("work")) }
+            val result = shouldThrow<IOException> { launcher.launch(Path.of("javaw.exe"), "-jar arguments --restart", Path.of("work")) }
 
             result.message.orEmpty() shouldContain "5"
         }
@@ -163,7 +188,7 @@ class AdministratorRestartTest {
             var command = emptyList<String>()
             val launcher = WindowsElevation(Path.of("powershell.exe")) { command = it; 0 }
 
-            val result = launcher.launch(Path.of("C:/JDK's/javaw.exe"), Path.of("C:/temp/a & b.jar"), Path.of("C:/work's"))
+            val result = launcher.launch(Path.of("C:/JDK's/javaw.exe"), "-jar \"a & b.jar\" --restart", Path.of("C:/work's"))
             val script = String(java.util.Base64.getDecoder().decode(command.last()), Charsets.UTF_16LE)
 
             assertSoftly {
