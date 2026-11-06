@@ -49,7 +49,7 @@ data class AppState(
     val savingSettings: Boolean = false,
     val inputError: Throwable? = null,
     val settingsLoading: Boolean = false,
-    val linkPermission: TransferRequest? = null,
+    val linkPermission: List<TransferRequest>? = null,
     val requestingPermission: Boolean = false,
     val permissionError: Throwable? = null,
 ) {

@@ -32,7 +32,8 @@ class AdministratorRestartIntegrationTest {
         compilerExit shouldBe 0
         val original = root.resolve("Pokémon 雪 & Game's \$special")
         val directory = root.resolve("fast games")
-        val selection = RestartSelection(TransferRequest(TransferKind.PROMOTE, original, directory, directory.resolve(original.fileName)),
+        val selection = RestartSelection(listOf(TransferRequest(TransferKind.PROMOTE, original, directory, directory.resolve(original.fileName)),
+            TransferRequest(TransferKind.PROMOTE, root.resolve("second"), root.resolve("other"), root.resolve("other/second"))),
             1234, "token", output.toString(), classes.toString())
         val jar = root.resolve("restart.jar")
         writeRestartJar(jar, selection, root, "Arguments")

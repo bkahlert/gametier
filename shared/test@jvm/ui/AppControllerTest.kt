@@ -28,6 +28,36 @@ class AppControllerTest {
     @Nested
     inner class LinkPermission {
         @Test
+        fun `on granting permission all blocked promotions retain their order and destinations`() = runTest {
+            val operations = AppTestOperations().apply { transfer = { throw permissionFailure() } }
+            val restarted = mutableListOf<TransferRequest>()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                StandardTestDispatcher(testScheduler), restartAsAdministrator = { restarted += it })
+            runCurrent()
+            app.select(listOf(appPath("one"), appPath("two")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.select(listOf(appPath("three")))
+            runCurrent()
+            app.setReviewDirectory(appPath("other"))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.requestLinkPermission(app.state.value.activity[1].id)
+            runCurrent()
+            app.confirmLinkPermission()
+            runCurrent()
+            val result = restarted.toList()
+
+            assertSoftly {
+                result.map { it.original } shouldBe listOf(appPath("one"), appPath("two"), appPath("three"))
+                result.map { it.directory } shouldBe listOf(appPath("destination"), appPath("destination"), appPath("other"))
+                app.state.value.exitRequested shouldBe true
+            }
+        }
+
+        @Test
         fun `on granting permission only an acknowledged restart closes the app`() = runTest {
             val operations = AppTestOperations().apply { transfer = { throw permissionFailure() } }
             val gate = CompletableDeferred<Unit>()
@@ -56,7 +86,7 @@ class AppControllerTest {
             val result = app.state.value
 
             assertSoftly {
-                prompt.linkPermission shouldBe failed.request
+                prompt.linkPermission shouldBe listOf(failed.request)
                 waiting.requestingPermission shouldBe true
                 waiting.busy shouldBe true
                 waiting.exitRequested shouldBe false
@@ -75,11 +105,12 @@ class AppControllerTest {
             val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
                 StandardTestDispatcher(testScheduler), restartAsAdministrator = { attempts++; throw failure })
             runCurrent()
-            app.select(listOf(appPath("one")))
+            app.select(listOf(appPath("one"), appPath("two")))
             runCurrent()
             app.confirmReview()
             runCurrent()
-            val item = app.state.value.activity.single()
+            val items = app.state.value.activity
+            val item = items.first()
             app.requestLinkPermission(item.id)
             runCurrent()
             app.confirmLinkPermission()
@@ -95,10 +126,10 @@ class AppControllerTest {
                 declined.exitRequested shouldBe false
                 declined.requestingPermission shouldBe false
                 declined.permissionError shouldBeSameInstanceAs failure
-                declined.linkPermission shouldBe item.request
+                declined.linkPermission shouldBe items.map { it.request }
                 attempts shouldBe 2
                 result.linkPermission shouldBe null
-                result.activity.single() shouldBe item
+                result.activity shouldBe items
             }
         }
 
@@ -152,8 +183,236 @@ class AppControllerTest {
             runCurrent()
         }
 
+        @Test
+        fun `on restarting successful transfers and unrelated failures are excluded`() = runTest {
+            val operations = AppTestOperations().apply { transfer = {
+                when (it.original.fileName.toString()) {
+                    "permission" -> throw permissionFailure()
+                    "failed" -> throw IOException("move failed")
+                }
+            } }
+            val restarted = mutableListOf<TransferRequest>()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                StandardTestDispatcher(testScheduler), restartAsAdministrator = { restarted += it })
+            runCurrent()
+            app.select(listOf(appPath("success"), appPath("permission"), appPath("failed")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            app.requestLinkPermission(app.state.value.activity[1].id)
+            runCurrent()
+            app.confirmLinkPermission()
+            runCurrent()
+            val result = restarted.toList()
+
+            result.map { it.original } shouldBe listOf(appPath("permission"))
+        }
+
+        @Test
+        fun `on retrying a game only its latest unresolved attempt is restored`() = runTest {
+            for (succeeds in listOf(false, true)) {
+                val operations = AppTestOperations().apply {
+                    snapshot = listOf(DestinationInventory(appPath("destination"), DestinationStatus.AVAILABLE))
+                    transfer = { throw permissionFailure() }
+                }
+                val restarted = mutableListOf<TransferRequest>()
+                val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer,
+                    StandardTestDispatcher(testScheduler), restartAsAdministrator = { restarted += it })
+                runCurrent()
+                app.select(listOf(appPath("one"), appPath("two")))
+                runCurrent()
+                app.confirmReview()
+                runCurrent()
+                val oldAttempt = app.state.value.activity.first()
+                operations.transfer = { if (!succeeds) throw permissionFailure() }
+                app.select(listOf(appPath("one")))
+                runCurrent()
+                app.setReviewDirectory(appPath("other"))
+                runCurrent()
+                app.confirmReview()
+                runCurrent()
+                app.requestLinkPermission(app.state.value.activity[1].id)
+                runCurrent()
+                app.confirmLinkPermission()
+                runCurrent()
+                val result = restarted.toList()
+
+                assertSoftly {
+                    app.canRequestLinkPermission(oldAttempt) shouldBe false
+                    result.map { it.original } shouldBe if (succeeds) listOf(appPath("two")) else listOf(appPath("two"), appPath("one"))
+                    result.map { it.directory } shouldBe if (succeeds) listOf(appPath("destination")) else listOf(appPath("destination"), appPath("other"))
+                }
+            }
+        }
+
         private fun permissionFailure() = com.bkahlert.gametier.game.SymlinkPreflightException(
             appPath("one"), appPath("destination/one"), "preflight", IOException("required privilege"))
+    }
+
+    @Nested
+    inner class RestoredPromotions {
+        @Test
+        fun `on startup all restored items wait for review and keep their destinations through refresh`() = runTest {
+            val operations = AppTestOperations()
+            val settings = AppTestSettings(appPath("new-default"))
+            val app = AppController(backgroundScope, settings, operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            val requests = listOf(request("one", "first"), request("two", "second"), request("three", "first"))
+            app.restorePromotions(requests)
+            runCurrent()
+            val review = app.state.value.review
+            val beforeConfirmation = operations.started.toList()
+            app.refresh()
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val result = operations.started.toList()
+
+            assertSoftly {
+                review?.items?.map { it.original } shouldBe listOf(appPath("one"), appPath("two"), appPath("three"))
+                review?.items?.map { it.destination } shouldBe listOf(appPath("first/one"), appPath("second/two"), appPath("first/three"))
+                review?.let(::reviewPresentation)?.canConfirm shouldBe true
+                beforeConfirmation shouldBe emptyList()
+                result shouldBe requests
+                settings.saved shouldBe emptyList()
+            }
+        }
+
+        @Test
+        fun `on removing an item the remaining restored destinations survive`() = runTest {
+            val operations = AppTestOperations()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second"), request("three", "first")))
+            runCurrent()
+            app.removeReviewItem(appPath("two"))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val result = operations.started.toList()
+
+            result shouldBe listOf(request("one", "first"), request("three", "first"))
+        }
+
+        @Test
+        fun `on cancelling restored review new selections use the default`() = runTest {
+            val operations = AppTestOperations()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second")))
+            runCurrent()
+            app.cancelReview()
+            runCurrent()
+            val cancelled = app.state.value
+            app.select(listOf(appPath("one")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val result = operations.started.toList()
+
+            assertSoftly {
+                cancelled.pendingSelection shouldBe emptyList()
+                cancelled.activity shouldBe emptyList()
+                result shouldBe listOf(request("one", "destination"))
+            }
+        }
+
+        @Test
+        fun `on changing the folder all restored items use the chosen destination`() = runTest {
+            val operations = AppTestOperations()
+            val app = AppController(backgroundScope, AppTestSettings(), operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second")))
+            runCurrent()
+            app.setReviewDirectory(appPath("chosen"))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val result = operations.started.toList()
+
+            result shouldBe listOf(request("one", "chosen"), request("two", "chosen"))
+        }
+
+        @Test
+        fun `on unavailable inventory restored items wait and recover without changing the default`() = runTest {
+            val failure = IOException("inventory")
+            val operations = AppTestOperations().apply { inventoryError = failure }
+            val settings = AppTestSettings(null)
+            val app = AppController(backgroundScope, settings, operations, readyPreparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val waiting = app.state.value
+            operations.inventoryError = null
+            app.refresh()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                waiting.pendingSelection shouldBe listOf(appPath("one"), appPath("two"))
+                waiting.review shouldBe null
+                waiting.inventoryError shouldBeSameInstanceAs failure
+                operations.started shouldBe emptyList()
+                result.review?.items?.map { it.destination } shouldBe listOf(appPath("first/one"), appPath("second/two"))
+                result.defaultDirectory shouldBe null
+                settings.saved shouldBe emptyList()
+            }
+        }
+
+        @Test
+        fun `on restored preparation failure the entire selection stays available for retry`() = runTest {
+            val failure = IOException("inspection")
+            var fail = true
+            val operations = AppTestOperations()
+            val preparer = SelectionPreparer { paths, directory, inventory, remembered, reserved ->
+                if (fail && directory == appPath("second")) throw failure
+                readyPreparer.prepare(paths, directory, inventory, remembered, reserved)
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, preparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second")))
+            runCurrent()
+            app.confirmReview()
+            runCurrent()
+            val failed = app.state.value
+            fail = false
+            app.refresh()
+            runCurrent()
+            val result = app.state.value
+
+            assertSoftly {
+                failed.review shouldBe null
+                failed.reviewError shouldBeSameInstanceAs failure
+                failed.pendingSelection shouldBe listOf(appPath("one"), appPath("two"))
+                operations.started shouldBe emptyList()
+                result.reviewError shouldBe null
+                result.review?.items?.map { it.destination } shouldBe listOf(appPath("first/one"), appPath("second/two"))
+            }
+        }
+
+        @Test
+        fun `on a destination problem only other restored destinations can be confirmed`() = runTest {
+            val operations = AppTestOperations()
+            val preparer = SelectionPreparer { paths, directory, inventory, remembered, reserved ->
+                readyPreparer.prepare(paths, directory, inventory, remembered, reserved).copy(
+                    problem = if (directory == appPath("first")) "Unavailable" else null,
+                    adjustments = listOf("Checked original locations"),
+                )
+            }
+            val app = AppController(backgroundScope, AppTestSettings(), operations, preparer, StandardTestDispatcher(testScheduler))
+            app.restorePromotions(listOf(request("one", "first"), request("two", "second")))
+            runCurrent()
+            val review = app.state.value.review
+            app.confirmReview()
+            runCurrent()
+            val result = operations.started.toList()
+
+            assertSoftly {
+                review?.items?.map { it.status } shouldBe listOf(ReviewStatus.BLOCKED, ReviewStatus.READY)
+                review?.items?.first()?.message shouldBe "Unavailable"
+                review?.adjustments shouldBe listOf("Checked original locations")
+                result shouldBe listOf(request("two", "second"))
+            }
+        }
+
+        private fun request(name: String, directory: String) =
+            TransferRequest(TransferKind.PROMOTE, appPath(name), appPath(directory), appPath("$directory/$name"))
     }
 
     @Nested

@@ -135,7 +135,8 @@ class UiPresentationTest {
             ))
 
             val result = reviewPresentation(review)
-            val noDirectory = reviewPresentation(review.copy(directory = null))
+            val noDestination = reviewPresentation(review.copy(directory = null,
+                items = review.items.map { it.copy(destination = null) }))
             val problem = reviewPresentation(review.copy(problem = "Unavailable"))
             val noReady = reviewPresentation(review.copy(items = review.items.drop(1)))
 
@@ -144,7 +145,7 @@ class UiPresentationTest {
                 result.skipped shouldBe 1
                 result.blocked shouldBe 1
                 result.canConfirm shouldBe true
-                noDirectory.canConfirm shouldBe false
+                noDestination.canConfirm shouldBe false
                 problem.canConfirm shouldBe false
                 noReady.canConfirm shouldBe false
             }

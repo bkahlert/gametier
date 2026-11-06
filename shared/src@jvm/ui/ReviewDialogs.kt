@@ -41,12 +41,14 @@ internal fun ReviewDialog(state: AppState, controller: AppController, onChooseDi
         }
     }) {
         Text("Move these items to your promotion folder. A link keeps each original location working.", style = MaterialTheme.typography.bodyMedium)
-        Text("Promotion folder", style = MaterialTheme.typography.titleSmall)
-        val directory = review?.directory ?: state.defaultDirectory
+        val multipleDirectories = review?.items?.mapNotNull { it.destination?.parent }?.distinct()?.let { it.size > 1 } == true
+        Text(if (multipleDirectories) "Promotion folders" else "Promotion folder", style = MaterialTheme.typography.titleSmall)
+        val directory = if (review != null) review.directory else state.defaultDirectory
         if (directory != null) PathText(directory)
+        if (multipleDirectories) Text("Each item's original promotion folder is shown below.", style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = onChooseDirectory, enabled = !state.savingSettings) {
-                Text(if (directory == null) "Choose folder…" else "Change folder…")
+                Text(if (multipleDirectories) "Change all folders…" else if (directory == null) "Choose folder…" else "Change folder…")
             }
             if (directory != null && directory == state.defaultDirectory) Text("Default", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary)
@@ -128,8 +130,8 @@ internal fun LinkPermissionDialog(state: AppState, controller: AppController) {
         Button(onClick = controller::confirmLinkPermission, enabled = !state.busy) { Text("Restart as administrator") }
     }) {
         Text("Windows may require administrator permission to create the link that keeps your game's original location working.")
-        Text("Restart GameTier with administrator access for this session. Windows will ask you to approve. Your selected game and destination will reopen for review before anything moves.")
-        state.linkPermission?.let { PathText(it.original); Text("Move to", style = MaterialTheme.typography.labelSmall); PathText(it.destination) }
+        Text("Restart GameTier with administrator access for this session. Windows will ask you to approve. All promotions blocked by symbolic-link permissions will reopen with their destinations for review before anything moves.")
+        state.linkPermission?.forEach { PathText(it.original); Text("Move to", style = MaterialTheme.typography.labelSmall); PathText(it.destination) }
         Text("No game data was moved. If you cancel the Windows prompt, GameTier stays open.", style = MaterialTheme.typography.bodySmall)
         if (state.requestingPermission) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
