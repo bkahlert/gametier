@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse: () -> Unit,
     onDetails: (String, String) -> Unit, modifier: Modifier = Modifier, explorerIntegration: ExplorerIntegration? = null) {
+    val defaultFolder = defaultFolderPresentation(state)
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(26.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TextButton(onClick = controller::showPromotions) { Text("← Promotions") }
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
@@ -48,10 +49,11 @@ internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(value = state.defaultInput, onValueChange = controller::setDefaultInput, modifier = Modifier.fillMaxWidth(),
                     label = { Text("Default promotion folder") }, singleLine = true, isError = state.settingsError != null,
-                    enabled = !state.savingSettings)
+                    enabled = defaultFolder.canEdit && !state.savingSettings,
+                    placeholder = { if (!defaultFolder.canEdit) Text("Loading saved settings…") })
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = onBrowse, enabled = !state.savingSettings) { Text("Browse…") }
-                    Button(onClick = controller::saveDefault, enabled = !state.savingSettings) { Text(if (state.savingSettings) "Saving…" else "Save") }
+                    OutlinedButton(onClick = onBrowse, enabled = defaultFolder.canEdit && !state.savingSettings) { Text("Browse…") }
+                    Button(onClick = controller::saveDefault, enabled = defaultFolder.canEdit && !state.savingSettings) { Text(if (state.savingSettings) "Saving…" else "Save") }
                     if (!state.savingSettings && state.settingsError == null && state.defaultDirectory != null && state.defaultInput == state.defaultDirectory.toString())
                         Text("Saved", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
@@ -69,7 +71,9 @@ internal fun SettingsScreen(state: AppState, controller: AppController, onBrowse
         Text("Previously used folders", style = MaterialTheme.typography.titleMedium)
         Text("GameTier keeps listing promotions from these locations.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (state.rememberedFolders.isEmpty()) Text("No previously used folders yet.", style = MaterialTheme.typography.bodyMedium,
+        if (state.settingsLoading) Text("Loading saved folders…", style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else if (state.rememberedFolders.isEmpty()) Text("No previously used folders yet.", style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         state.rememberedFolders.sortedBy { it.lowercase() }.forEach { folder ->
             HorizontalDivider()

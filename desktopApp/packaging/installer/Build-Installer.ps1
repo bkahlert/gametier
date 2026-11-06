@@ -38,6 +38,10 @@ if ($main.SelectNodes('/w:Wix/w:Product/w:Feature[@Id="DefaultFeature"]', $names
     throw 'The installed JDK changed its WiX template; review Explorer installer integration.'
 }
 $feature = $main.SelectSingleNode('/w:Wix/w:Product/w:Feature[@Id="DefaultFeature"]', $namespaces)
+$restartManagerShutdown = $main.CreateElement('Property', $main.DocumentElement.NamespaceURI)
+$restartManagerShutdown.SetAttribute('Id', 'MSIRMSHUTDOWN')
+$restartManagerShutdown.SetAttribute('Value', '1')
+$feature.ParentNode.InsertBefore($restartManagerShutdown, $feature) | Out-Null
 $reference = $main.CreateElement('ComponentGroupRef', $main.DocumentElement.NamespaceURI)
 $reference.SetAttribute('Id', 'GameTierExplorer')
 $feature.AppendChild($reference) | Out-Null

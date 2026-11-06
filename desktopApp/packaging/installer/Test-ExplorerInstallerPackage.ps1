@@ -70,5 +70,8 @@ try {
     foreach ($path in @('Software\Classes\CLSID\{9B6ED281-384A-4DBF-98C0-D26B6D41B352}', 'Software\Classes\*\shell\GameTier.Promote', 'Software\Classes\Directory\shell\GameTier.Promote')) {
         Assert-Count @($registrations | Where-Object { $_[0] -ceq '1' -and $_[1] -ceq $path -and $_[2] -ceq '-' }) 1 "Uninstall registration removal $path"
     }
-    Write-Output 'Explorer MSI package passed: payload, per-user registration, feature inclusion, uninstall ownership.'
+    $restartManagerShutdown = Read-Rows $database "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'MSIRMSHUTDOWN'" 1
+    Assert-Count $restartManagerShutdown 1 'Upgrade force shutdown policy'
+    if ($restartManagerShutdown[0][0] -cne '1') { throw "Upgrade force shutdown policy expected '1', got '$($restartManagerShutdown[0][0])'." }
+    Write-Output 'Explorer MSI package passed: payload, per-user registration, feature inclusion, uninstall ownership, upgrade shutdown policy.'
 } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($windowsInstaller) | Out-Null }

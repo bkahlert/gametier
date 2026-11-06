@@ -11,6 +11,34 @@ import kotlin.test.Test
 
 class BackupStoreTest {
     @Test
+    fun `on creating drive storage it is hidden`() = withTestDirectory { root ->
+        val source = Files.writeString(root.resolve("game"), "source")
+        val storage = root.resolve(".gametier")
+        val store = BackupStore({ storage.resolve("backups") }, { listOf(root) })
+
+        val result = store.reserve(source, root.resolve("games/game"))
+
+        assertSoftly {
+            result.folder shouldBe storage.resolve("backups/game")
+            Files.isHidden(storage) shouldBe true
+        }
+    }
+
+    @Test
+    fun `on reusing visible drive storage it becomes hidden`() = withTestDirectory { root ->
+        val source = Files.writeString(root.resolve("game"), "source")
+        val storage = Files.createDirectory(root.resolve(".gametier"))
+        val store = BackupStore({ storage.resolve("backups") }, { listOf(root) })
+
+        val result = store.reserve(source, root.resolve("games/game"))
+
+        assertSoftly {
+            result.folder shouldBe storage.resolve("backups/game")
+            Files.isHidden(storage) shouldBe true
+        }
+    }
+
+    @Test
     fun `on another drive backup storage destination reservation refuses`() = withTestDirectory { root ->
         val source = Files.writeString(root.resolve("game"), "source")
         val otherStorage = Files.createDirectories(root.resolve("other-backups/first/data"))

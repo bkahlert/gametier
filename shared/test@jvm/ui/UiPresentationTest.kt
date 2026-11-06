@@ -14,6 +14,35 @@ import kotlin.test.Test
 import org.junit.jupiter.api.Nested
 
 class UiPresentationTest {
+    @Test
+    fun `on settings startup default folder presentation never claims the preference is missing`() {
+        val loading = defaultFolderPresentation(AppState(settingsLoading = true))
+        val missing = defaultFolderPresentation(AppState(settingsLoading = false))
+        val configured = defaultFolderPresentation(AppState(defaultDirectory = Path.of("C:\\Games"), settingsLoading = false))
+
+        assertSoftly {
+            loading.status shouldBe DefaultFolderStatus.LOADING
+            loading.directory shouldBe null
+            loading.canEdit shouldBe false
+            missing.status shouldBe DefaultFolderStatus.MISSING
+            missing.canEdit shouldBe true
+            configured.status shouldBe DefaultFolderStatus.CONFIGURED
+            configured.directory shouldBe Path.of("C:\\Games")
+            configured.canEdit shouldBe true
+        }
+    }
+
+    @Test
+    fun `on explorer selection review waits until settings finish loading`() {
+        val pending = listOf(Path.of("C:\\Games\\game"))
+
+        val loading = reviewDialogVisible(AppState(settingsLoading = true, pendingSelection = pending))
+        val loaded = reviewDialogVisible(AppState(settingsLoading = false, pendingSelection = pending))
+
+        loading shouldBe false
+        loaded shouldBe true
+    }
+
     @Nested
     inner class SourceBackups {
         @Test

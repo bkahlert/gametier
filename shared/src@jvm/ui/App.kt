@@ -59,7 +59,7 @@ fun App(
                 }
             }
         }
-        if (state.pendingSelection.isNotEmpty() || state.review != null || state.preparing || state.reviewError != null)
+        if (reviewDialogVisible(state))
             ReviewDialog(state, controller, onChooseReviewDirectory, showDetails)
         state.demotion?.let { DemoteDialog(it, controller::cancelDemote, controller::confirmDemote) }
         state.backupRestoration?.let { RestoreBackupDialog(it, controller::cancelRestoreBackup, controller::confirmRestoreBackup) }

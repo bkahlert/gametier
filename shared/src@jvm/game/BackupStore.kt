@@ -12,6 +12,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.WRITE
+import java.nio.file.attribute.DosFileAttributeView
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -42,6 +43,7 @@ class BackupStore(
         requireOrdinaryParents(root)
         if (gameEntryExists(folder)) throw IOException("Source backup already exists: $folder")
         createOrdinaryDirectories(root)
+        hideDriveStorage(root)
         if (Files.getFileStore(source.parent) != Files.getFileStore(root)) {
             throw IOException("Source backup must be on the original filesystem: $root")
         }
@@ -164,6 +166,12 @@ private fun createOrdinaryDirectories(path: Path) {
         if (!gameEntryExists(current)) Files.createDirectory(current)
         if (!Files.isDirectory(current, NOFOLLOW_LINKS) || isWindowsReparsePoint(current)) throw IOException("Backup parent must be ordinary: $current")
     }
+}
+
+private fun hideDriveStorage(backupRoot: Path) {
+    val storage = backupRoot.parent?.takeIf { it.fileName?.toString()?.equals(".gametier", ignoreCase = true) == true }
+        ?: return
+    Files.getFileAttributeView(storage, DosFileAttributeView::class.java, NOFOLLOW_LINKS)?.setHidden(true)
 }
 
 private fun normalized(path: Path): Path = path.toAbsolutePath().normalize()
