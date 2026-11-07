@@ -18,10 +18,24 @@ was at promotion. Snapshots live in
 
 ## Install
 
-[Download the latest Windows installer](https://github.com/bkahlert/gametier/releases/latest),
-open the `.exe`, then launch **GameTier** from the Start menu.
-Requires Windows x64 (Windows 10 version 2004 or later). The installer uses a
-self-signed certificate; approve the publisher warning and administrator prompt.
+Requires Windows x64 (Windows 10 version 2004 or later).
+
+### Trust the certificate (once per PC)
+
+GameTier uses a self-signed signing certificate. Install it before installing the app:
+
+1. Download [gametier.crt](https://github.com/bkahlert/gametier/releases/latest/download/gametier.crt).
+2. Open it, choose **Install Certificate**, select **Local Machine**, and approve
+   the administrator prompt.
+3. Select **Place all certificates in the following store**, browse to
+   **Trusted People**, and finish the wizard.
+
+### Install the app
+
+1. Download and run [gametier.exe](https://github.com/bkahlert/gametier/releases/latest/download/gametier.exe).
+2. Wait for installation to finish (the download may take a few minutes), then
+   launch **GameTier** from the Start menu.
+
 Updates install automatically in the background when GameTier is closed.
 
 ## Use
@@ -31,8 +45,10 @@ Updates install automatically in the background when GameTier is closed.
 3. Choose a folder on your faster drive, review the selection, and click **Promote**.
    Your first destination becomes the default for future additions.
 
-You can also right-click one file or folder and choose **Promote with GameTier**
-Turn this option off in **Settings**.
+You can also right-click one file or folder and choose **Promote with GameTier**.
+On Windows 11, it appears directly in the main context menu. If the entry is
+missing after installation, restart **Windows Explorer** from Task Manager
+(or sign out and back in). Turn this option off in **Settings**.
 Right-click a managed game link, its promoted files, or its backup folder to
 choose **Demote with GameTier**. Selecting an item inside returns the whole game.
 When only the snapshot remains, the menu offers **Restore backup with GameTier**.
