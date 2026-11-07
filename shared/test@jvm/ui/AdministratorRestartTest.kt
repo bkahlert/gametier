@@ -1,6 +1,7 @@
 package com.bkahlert.gametier.ui
 
 import com.bkahlert.gametier.testsupport.filesystem.withTestDirectory
+import com.bkahlert.gametier.testsupport.workflow.withSystemProperties
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -11,20 +12,41 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import kotlin.test.Test
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.parallel.ResourceLock
+import org.junit.jupiter.api.parallel.Resources.SYSTEM_PROPERTIES
 
+@ResourceLock(SYSTEM_PROPERTIES)
 class AdministratorRestartTest {
     @Nested
     inner class Handoff {
         @Test
-        fun `on packaged startup the application launcher replaces absent bundled java`() {
+        fun `on jpackage startup the application launcher replaces absent bundled java`() {
             val launcher = appPath("GameTier.exe")
             val payload = appPath("temp/restart payload.jar")
 
-            val result = defaultAdministratorLaunch(launcher.toString(), appPath("runtime").toString())
+            withSystemProperties("gametier.appPath" to null, "jpackage.app-path" to launcher.toString()) {
+                val result = defaultAdministratorLaunch(javaHome = appPath("runtime").toString())
 
-            assertSoftly {
-                result.executable shouldBe launcher
-                result.arguments(payload) shouldBe "--restart \"${payload.toAbsolutePath()}\""
+                assertSoftly {
+                    result.executable shouldBe launcher
+                    result.arguments(payload) shouldBe "--restart \"${payload.toAbsolutePath()}\""
+                }
+            }
+        }
+
+        @Test
+        fun `on Conveyor startup the configured application launcher takes precedence`() {
+            val launcher = appPath("Conveyor/GameTier.exe")
+            val payload = appPath("temp/restart payload.jar")
+
+            withSystemProperties("gametier.appPath" to launcher.toString(),
+                "jpackage.app-path" to appPath("legacy/GameTier.exe").toString()) {
+                val result = defaultAdministratorLaunch(javaHome = appPath("runtime").toString())
+
+                assertSoftly {
+                    result.executable shouldBe launcher
+                    result.arguments(payload) shouldBe "--restart \"${payload.toAbsolutePath()}\""
+                }
             }
         }
 
@@ -33,11 +55,13 @@ class AdministratorRestartTest {
             val javaHome = appPath("runtime")
             val payload = appPath("temp/restart payload.jar")
 
-            val result = defaultAdministratorLaunch(null, javaHome.toString())
+            withSystemProperties("gametier.appPath" to null, "jpackage.app-path" to null) {
+                val result = defaultAdministratorLaunch(javaHome = javaHome.toString())
 
-            assertSoftly {
-                result.executable shouldBe javaHome.resolve("bin/javaw.exe")
-                result.arguments(payload) shouldBe "-jar \"${payload.fileName}\" --restart"
+                assertSoftly {
+                    result.executable shouldBe javaHome.resolve("bin/javaw.exe")
+                    result.arguments(payload) shouldBe "-jar \"${payload.fileName}\" --restart"
+                }
             }
         }
 

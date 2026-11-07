@@ -21,17 +21,16 @@ Metadata parsing uses the vendored MIT-licensed
 [nlohmann/json 3.12.0](https://github.com/nlohmann/json/releases/tag/v3.12.0)
 in `third_party/nlohmann`; builds do not download dependencies.
 
-The installer registers CLSID `{9B6ED281-384A-4DBF-98C0-D26B6D41B352}` as an
-apartment-threaded in-process server and assigns it to `ExplorerCommandHandler`
-for `*` and `Directory`. The per-user `Software\GameTier` DWORD
+The MSIX manifest registers CLSID `{9B6ED281-384A-4DBF-98C0-D26B6D41B352}` as an
+apartment-threaded COM surrogate and assigns file and directory context-menu
+verbs to it. The per-user `Software\GameTier` DWORD
 `ExplorerIntegrationEnabled` defaults to enabled when absent.
 
-Windows 11's primary menu additionally requires the signed sparse identity
-package described by `AppxManifest.xml.in`. Release packaging must supply its
-certificate-matching publisher, four-part package version and the three PNG assets,
-then sign and register it with the install directory as its external location.
-An unsigned manifest alone does not enable the primary menu. Do not install
-certificates or change Developer Mode to bypass release signing.
+Conveyor supplies the signed package identity, icons, and application launcher.
+Its installer trusts the self-signed certificate with administrator approval.
+The package declarations are in [conveyor.conf](../installer/conveyor.conf).
+The standalone sparse-identity scripts and MSI builder remain legacy tooling;
+the release workflow no longer uses them.
 
 The identity and COM declarations follow Microsoft's
 [Explorer integration documentation](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/integrate-packaged-app-with-file-explorer).

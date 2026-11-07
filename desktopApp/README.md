@@ -34,11 +34,11 @@ existing-volume usage, and cleanup guidance.
 
 Push a `vMAJOR.MINOR.PATCH` tag, such as `v0.1.1`, to trigger the
 [release workflow](../.github/workflows/release.yml). It runs tests, stages the
-application JARs, and packages a Windows x64 MSI with a bundled Java runtime.
-Current installers are unsigned.
-The Explorer action appears in the classic context menu (Windows 11: **Show more
-options**). Windows 11's primary menu requires a signed package identity; see
-[Explorer packaging](packaging/explorer/README.md).
+application JARs, and uses Conveyor to produce a self-updating Windows x64
+EXE/MSIX distribution with a bundled Java runtime. A self-signed certificate
+provides a stable package identity and Explorer integration without a paid
+signing service. See [installer packaging](packaging/installer/README.md) for
+the one-time release-key setup and local verification.
 
 To stage the same JARs locally:
 
@@ -47,13 +47,11 @@ To stage the same JARs locally:
 ```
 
 Build the [native Explorer command](packaging/explorer/README.md), then package
-with JDK 25 and WiX available on `PATH`:
+from an elevated PowerShell with Conveyor 22.3 available on `PATH`:
 
 ```powershell
-.\desktopApp\packaging\installer\Build-Installer.ps1 -AppVersion 0.1.1
+.\desktopApp\packaging\installer\Build-UpdateSite.ps1 -AppVersion 0.1.1
 ```
 
-CI installs two test versions on its clean runner, checks registration and a
-disabled preference through upgrade, then uninstalls. See
-[installer scripts](packaging/installer/README.md) for packaging checks and the
-separate signed identity preparation path.
+CI builds two test versions with a disposable key. A clean Windows runner checks
+the packages, settings retention, symlinks, deferred updates, and uninstall.

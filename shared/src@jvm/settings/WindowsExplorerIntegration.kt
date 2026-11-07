@@ -1,5 +1,6 @@
 package com.bkahlert.gametier.settings
 
+import com.bkahlert.gametier.files.packagedApplicationPath
 import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Pointer
@@ -9,7 +10,6 @@ import com.sun.jna.ptr.PointerByReference
 import com.sun.jna.win32.StdCallLibrary
 import java.io.IOException
 import java.nio.file.Files
-import java.nio.file.Path
 
 interface ExplorerIntegration {
     fun isEnabled(): Boolean
@@ -49,7 +49,7 @@ class WindowsExplorerIntegration internal constructor(private val key: String) :
     companion object {
         fun installed(): ExplorerIntegration? {
             if (!System.getProperty("os.name").startsWith("Windows")) return null
-            val executable = System.getProperty("jpackage.app-path")?.let(Path::of) ?: return null
+            val executable = packagedApplicationPath() ?: return null
             if (!Files.isRegularFile(executable.resolveSibling("GameTierExplorer.dll"))) return null
             return WindowsExplorerIntegration("Software\\GameTier")
         }
